@@ -1,0 +1,27 @@
+{
+  "name": "liyu-bingo",
+  "version": "1.0.0",
+  "description": "Liyu Bingo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.22.2",
+    "mongoose": "^8.24.3",
+    "socket.io": "^4.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/addisamelse-droid/liyu-bingo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/addisamelse-droid/liyu-bingo/issues"
+  },
+  "homepage": "https://github.com/addisamelse-droid/liyu-bingo#readme"
+}
