@@ -171,7 +171,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_new:
         update_phone(user.id, phone_number)
 
-    # 🟢 ቴሌግራም ID እና ስም ከሊንኩ ጋር እንዲያያዙ ይደረጋል
+    # ሊንኩ የቴሌግራም ዩዘር ID እና ስም አብሮ እንዲይዝ ይህንን ይጠቀሙ:
     safe_name = user.first_name.replace(" ", "_") if user.first_name else "Player"
     user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}&name={safe_name}"
     inline_game_btn = InlineKeyboardMarkup([
