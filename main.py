@@ -33,7 +33,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 MONGO_URI = os.getenv("MONGO_URI", "")
 ADMIN_ID = os.getenv("ADMIN_ID", "")
 
-WEB_APP_URL = "https://liyu-bingo-1-d7oz.onrender.com"
+WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"
 
 TELEBIRR_ACCOUNT = "0902715499"  
 CBE_ACCOUNT = "1000483349452"    
@@ -171,8 +171,10 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_new:
         update_phone(user.id, phone_number)
 
+    # 🟢 እዚህ ጋር የቴሌግራም ዩዘር መረጃ ከሊንኩ ጋር እንዲያያዝ ይደረጋል
+    user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}"
     inline_game_btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🕹️ አሁኑኑ ይጫወቱ (Play Game)", web_app=WebAppInfo(url=WEB_APP_URL))]
+        [InlineKeyboardButton("🕹️ አሁኑኑ ይጫወቱ (Play Game)", web_app=WebAppInfo(url=user_web_app_url))]
     ])
 
     await update.message.reply_text(
@@ -257,8 +259,9 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 3. Game በተን
     elif "ጨዋታ ጀምር" in text or "Play Game" in text:
         context.user_data['action'] = None
+        user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}"
         inline_game_btn = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🕹️ Game App ክፈት", web_app=WebAppInfo(url=WEB_APP_URL))]
+            [InlineKeyboardButton("🕹️ Game App ክፈት", web_app=WebAppInfo(url=user_web_app_url))]
         ])
         await update.message.reply_text("🎮 ጨዋታውን ለመጀመር ከታች ያለውን በተን ይጫኑ፡", reply_markup=inline_game_btn)
 
