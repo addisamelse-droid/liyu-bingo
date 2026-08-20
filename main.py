@@ -1,6 +1,6 @@
  # -*- coding: utf-8 -*-
 # ===============================
-# LIYU BINGO 
+# LIYU BINGO PRO - FULLY FIXED CODE
 # ===============================
 import os
 import re
@@ -25,15 +25,28 @@ from telegram.ext import (
 )
 
 # -------------------------------------------------------------
-# CONFIGURATION
+# CONFIGURATION - እዚህ የራስህን እሴቶች አስገባ
 # -------------------------------------------------------------
-load_dotenv()
+# ከ .env ወይም ከዚህ በታች በቀጥታ መሙላት ትችላለህ
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "") 
-MONGO_URI = os.getenv("MONGO_URI", "")
-ADMIN_ID = os.getenv("ADMIN_ID", "")
+BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0" 
+MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ MongoDB URLህን እዚህ ጻፍ
+ADMIN_ID = "2134795751"         # ← የ Telegram IDህን እዚህ ጻፍ
 
 WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"
+  # ← የ Render URLህን ቀይር
+
+# .env ካለህ ከላይ ያሉትን ባዶ ትተህ ይህን አትሰርዝ
+try:
+    load_dotenv()
+    if os.getenv("BOT_TOKEN"):
+        BOT_TOKEN = os.getenv("BOT_TOKEN")
+    if os.getenv("MONGO_URI"):
+        MONGO_URI = os.getenv("MONGO_URI")
+    if os.getenv("ADMIN_ID"):
+        ADMIN_ID = os.getenv("ADMIN_ID")
+except:
+    pass
 
 TELEBIRR_ACCOUNT = "0902715499"  
 CBE_ACCOUNT = "1000483349452"    
@@ -54,7 +67,7 @@ client = pymongo.MongoClient(MONGO_URI)
 db = client['liyu_bingo']
 players_col = db['users']
 
-# -------------------------------------------------------------
+#  
 # KEYBOARD SETUP (ቋሚ እና ኢንላይን በተኖች)
 # -------------------------------------------------------------
 def get_contact_keyboard():
@@ -171,11 +184,8 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_new:
         update_phone(user.id, phone_number)
 
-    # ሊንኩ የቴሌግራም ዩዘር ID እና ስም አብሮ እንዲይዝ ይህንን ይጠቀሙ:
-    safe_name = user.first_name.replace(" ", "_") if user.first_name else "Player"
-    user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}&name={safe_name}"
     inline_game_btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🕹️ አሁኑኑ ይጫወቱ (Play Game)", web_app=WebAppInfo(url=user_web_app_url))]
+        [InlineKeyboardButton("🕹️ አሁኑኑ ይጫወቱ (Play Game)", web_app=WebAppInfo(url=WEB_APP_URL))]
     ])
 
     await update.message.reply_text(
@@ -260,10 +270,8 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 3. Game በተን
     elif "ጨዋታ ጀምር" in text or "Play Game" in text:
         context.user_data['action'] = None
-        safe_name = user.first_name.replace(" ", "_") if user.first_name else "Player"
-        user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}&name={safe_name}"
         inline_game_btn = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🕹️ Game App ክፈት", web_app=WebAppInfo(url=user_web_app_url))]
+            [InlineKeyboardButton("🕹️ Game App ክፈት", web_app=WebAppInfo(url=WEB_APP_URL))]
         ])
         await update.message.reply_text("🎮 ጨዋታውን ለመጀመር ከታች ያለውን በተን ይጫኑ፡", reply_markup=inline_game_btn)
 
@@ -387,8 +395,8 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MAIN APP LAUNCH
 # -------------------------------------------------------------
 if __name__ == "__main__":
-    if not BOT_TOKEN or not MONGO_URI or not ADMIN_ID:
-        raise RuntimeError("BOT_TOKEN, MONGO_URI and ADMIN_ID must be set in environment variables")
+    if (not BOT_TOKEN or BOT_TOKEN.startswith("YOUR_")) or (not MONGO_URI or MONGO_URI.startswith("YOUR_")) or (not ADMIN_ID or ADMIN_ID.startswith("YOUR_")):
+        raise RuntimeError("❌ እባክዎ BOT_TOKEN, MONGO_URI እና ADMIN_ID ን በ main.py ውስጥ (ከላይ) ይሙሉ!")
     app = (
         Application.builder()
         .token(BOT_TOKEN)

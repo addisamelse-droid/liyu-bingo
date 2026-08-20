@@ -27,16 +27,33 @@ app.use(express.json());
 app.use('/sounds', express.static(path.join(__dirname, 'sounds')));
 app.use('/sounds', express.static(path.join(__dirname, 'public', 'sounds')));
 
-// 🟢 2. MongoDB Connection
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) console.warn('⚠️ MONGO_URI is not set. Add it in Render Environment Variables.');
-mongoose.connect(MONGO_URI || 'mongodb://127.0.0.1:27017/liyu_bingo')
-    .then(() => console.log('✅ Connected to MongoDB Database successfully!'))
+// 🟢 2. CONFIG - እዚህ የራስህን እሴቶች ማስገባት ትችላለህ (Render env ካለ ይመረጣል)
+const HARDCODED_MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0";       // ← MongoDB URLህን እዚህ ጻፍ
+const HARDCODED_BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0";       // ← Bot Tokenህን እዚህ ጻፍ
+const HARDCODED_ADMIN_CHAT_ID = "2134795751"; // ← Telegram IDህን እዚህ ጻፍ
+
+const MONGO_URI = process.env.MONGO_URI || HARDCODED_MONGO_URI;
+if (!MONGO_URI || MONGO_URI.startsWith("YOUR_")) {
+    console.warn('⚠️ MONGO_URI is not set. Fill HARDCODED_MONGO_URI in server.js or set Render Environment Variable.');
+}
+
+let mongoUrl = (MONGO_URI && !MONGO_URI.startsWith("YOUR_")) ? MONGO_URI : 'mongodb://127.0.0.1:27017/liyu_bingo';
+// database name ካልተገለጸ liyu_bingo እንዲጠቀም
+if (mongoUrl.includes('mongodb.net') && !mongoUrl.includes('/liyu_bingo')) {
+    if (mongoUrl.includes('mongodb.net/?')) {
+        mongoUrl = mongoUrl.replace('mongodb.net/?', 'mongodb.net/liyu_bingo?');
+    } else if (mongoUrl.endsWith('mongodb.net/') || mongoUrl.endsWith('mongodb.net')) {
+        mongoUrl = mongoUrl.replace(/mongodb\.net\/?$/, 'mongodb.net/liyu_bingo');
+    }
+}
+
+mongoose.connect(mongoUrl)
+    .then(() => console.log('✅ Connected to MongoDB (liyu_bingo) successfully!'))
     .catch((err) => console.error('❌ Database Connection Error:', err));
 
 // 🟢 Telegram Bot Token እና Admin Chat ID
-const TELEGRAM_BOT_TOKEN = process.env.BOT_TOKEN; 
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
+const TELEGRAM_BOT_TOKEN = process.env.BOT_TOKEN || HARDCODED_BOT_TOKEN; 
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || HARDCODED_ADMIN_CHAT_ID;
 
 // 🟢 ቁጥሩን አይቶ B, I, N, G, O የሚለውን ፊደል የሚመልስ Helper Function
 function getBingoLetter(num) {
@@ -274,7 +291,7 @@ function getServerCardNumbers(seed) {
     return flatArray;
 }
 
-// 🟢 የቢንጎ ማረጋገጫ ተግባር (መስመር፣ ዲያጎናል እና 4 ማዕዘኖች)
+// 🟢 የቢንጎ ማረጋገጫ ተግባር
 function verifyBingoWin(cardNum, drawnNumbers) {
     const cardNumbers = getServerCardNumbers(cardNum);
     const grid = [];
@@ -282,7 +299,6 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         grid.push(cardNumbers.slice(i * 5, i * 5 + 5));
     }
 
-    // 1. ረድፎችን (Rows) ማረጋገጥ
     for (let r = 0; r < 5; r++) {
         let rowWin = true;
         for (let c = 0; c < 5; c++) {
@@ -295,7 +311,6 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         if (rowWin) return true;
     }
 
-    // 2. አምዶችን (Columns) ማረጋገጥ
     for (let c = 0; c < 5; c++) {
         let colWin = true;
         for (let r = 0; r < 5; r++) {
@@ -308,7 +323,6 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         if (colWin) return true;
     }
 
-    // 3. ሰያፍ (Diagonals) ማረጋገጥ
     let diag1Win = true;
     let diag2Win = true;
     for (let i = 0; i < 5; i++) {
@@ -319,15 +333,14 @@ function verifyBingoWin(cardNum, drawnNumbers) {
     }
     if (diag1Win || diag2Win) return true;
 
-    // 4. 🟢 4ቱ ማዕዘኖች (Four Corners) ማረጋገጫ
+    // 🟢 4 Corners Win (4 ማዕዘን ቁጥሮች)
     const corners = [
-        grid[0][0], // Top-Left
-        grid[0][4], // Top-Right
-        grid[4][0], // Bottom-Left
-        grid[4][4]  // Bottom-Right
+        grid[0][0], // top-left
+        grid[0][4], // top-right
+        grid[4][0], // bottom-left
+        grid[4][4]  // bottom-right
     ];
-    
-    let cornersWin = corners.every(val => val === "FREE" || drawnNumbers.includes(val));
+    const cornersWin = corners.every(val => val === "FREE" || drawnNumbers.includes(val));
     if (cornersWin) return true;
 
     return false;
@@ -605,10 +618,35 @@ io.on('connection', (socket) => {
             totalCards: totalCardsBought,
             prizePool: prizePool,
             timeLeft: room.timeLeft,
-            stake: stakeNum
+            stake: stakeNum,
+            isGameInProgress: !!room.isGameInProgress,
+            drawnNumbers: room.drawnNumbers || []
         });
 
         socket.emit('update_taken_cards', room.takenCards);
+
+        // ጨዋታ እየተካሄደ ከሆነ → አዲስ ተጫዋች እንደ spectator ያየዋል
+        if (room.isGameInProgress) {
+            socket.emit('game_started', {
+                gameId: room.gameId,
+                prizePool: prizePool,
+                isSpectator: true
+            });
+
+            // እስካሁን የወጡ ቁጥሮችን ላክ
+            if (room.drawnNumbers && room.drawnNumbers.length > 0) {
+                const lastNum = room.drawnNumbers[room.drawnNumbers.length - 1];
+                const letter = getBingoLetter(lastNum);
+                socket.emit('number_drawn', {
+                    number: lastNum,
+                    letter: letter,
+                    displayNumber: `${letter}${lastNum}`,
+                    calledCount: room.drawnNumbers.length,
+                    drawnNumbers: room.drawnNumbers,
+                    isReplay: true
+                });
+            }
+        }
 
         if (!room.isGameInProgress && !room.timerInterval) {
             startRoomTimer(stakeNum);

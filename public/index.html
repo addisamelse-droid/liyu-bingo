@@ -222,10 +222,6 @@ const socket = io();
 
 socket.on('connect', () => {
     console.log('✅ ኔትወርክ ተገናኝቷል');
-    const user = getTelegramUser();
-    if (user && user.telegram_id) {
-        socket.emit('register_telegram_user', user.telegram_id);
-    }
     setTimeout(fetchLatestBalance, 500);
 });
 
@@ -296,41 +292,12 @@ function getTelegramUser(){
             username: u.username ? "@" + u.username : ""
         };
     }
-    
-    // ከቴሌግራም ውጭ ሲከፈት በ URL Parameters (Query String) ውስጥ telegram_id ካለ ለመቀበል
-    const urlParams = new URLSearchParams(window.location.search);
-    const tidFromUrl = urlParams.get('telegram_id');
-    if (tidFromUrl) {
-        return {
-            telegram_id: String(tidFromUrl),
-            name: urlParams.get('name') || "Player",
-            username: urlParams.get('username') || ""
-        };
-    }
-
-    // ከላይ ካልተገኘ በ LocalStorage ውስጥ የተያዘውን መጠቀም (ለቀጣይ ቪዚት)
-    let savedId = localStorage.getItem('liyu_telegram_id');
-    if (savedId) {
-        return {
-            telegram_id: savedId,
-            name: localStorage.getItem('liyu_name') || "Player",
-            username: localStorage.getItem('liyu_username') || ""
-        };
-    }
-
     return { telegram_id:"123456789", name:"Demo Player", username:"demo" };
 }
 
 async function login(){
     const user = getTelegramUser();
-    
-    // መረጃውን በ LocalStorage እንያዘው
-    localStorage.setItem('liyu_telegram_id', user.telegram_id);
-    localStorage.setItem('liyu_name', user.name);
-    localStorage.setItem('liyu_username', user.username);
-
-    document.getElementById("loginInfo").innerHTML = `<b>ስም:</b> ${user.name} <br><small>ID: ${user.telegram_id}</small>`;
-    
+    document.getElementById("loginInfo").innerHTML = `<b>ስም:</b> ${user.name}`;
     try{
         const response = await fetch('/api/profile', {
             method:"POST",
@@ -341,16 +308,7 @@ async function login(){
         if(!data.ok) throw new Error(data.error);
         
         player = data.player;
-        
-        // 🟢 ቴሌግራም ዩዘር ID ን ወደ ሰርቨር በሶኬት ማስመዝገብ
-        if (socket.connected) {
-            socket.emit('register_telegram_user', player.telegram_id);
-        } else {
-            socket.on('connect', () => {
-                socket.emit('register_telegram_user', player.telegram_id);
-            });
-        }
-
+        if (player && player.telegram_id) socket.emit('register_telegram_user', player.telegram_id);
         document.getElementById("wallet").textContent = (player && player.balance !== undefined) ? player.balance : 0;
         
         document.getElementById("loginStatus").textContent = "✅ ገብተዋል";
@@ -400,16 +358,7 @@ function handleStakeClick(stake){
     document.getElementById("cardSelectionSection").classList.remove("hide");
 
     showPage("game");
-    
-    // 🟢 ዩዘሩን አረጋግጦ መጀመሪያ ቴሌግራም ID ን ወደ ሰርቨር መላክ
-    const user = getTelegramUser();
-    if (user && user.telegram_id) {
-        socket.emit('register_telegram_user', user.telegram_id);
-    }
-
-    // 🟢 ልክ እንደጠየቁት በቀላሉ stake ን ብቻ እንልካለን
     socket.emit('join_room', stake);
-
     buildCardGrid();
     renderCalledNumbers();
     updateCardGridUI();
@@ -804,7 +753,18 @@ function playRecordedVoice(num){
 }
 
 login();
-setInterval(() => { if (document.visibilityState !== 'hidden') fetchLatestBalance(); }, 5000);
+
+// Wallet በየ 3 ሰከንድ ያድሳል (Bot Deposit እንዲታይ)
+setInterval(() => { 
+    if (document.visibilityState !== 'hidden') fetchLatestBalance(); 
+}, 3000);
+
+// Mini App ሲከፈት / ሲመለስ ወዲያውኑ balance ያድሳል
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        fetchLatestBalance();
+    }
+});
 </script>
 </body>
 </html>
