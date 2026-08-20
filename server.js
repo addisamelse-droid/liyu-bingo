@@ -274,7 +274,7 @@ function getServerCardNumbers(seed) {
     return flatArray;
 }
 
-// 🟢 የቢንጎ ማረጋገጫ ተግባር
+// 🟢 የቢንጎ ማረጋገጫ ተግባር (መስመር፣ ዲያጎናል እና 4 ማዕዘኖች)
 function verifyBingoWin(cardNum, drawnNumbers) {
     const cardNumbers = getServerCardNumbers(cardNum);
     const grid = [];
@@ -282,6 +282,7 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         grid.push(cardNumbers.slice(i * 5, i * 5 + 5));
     }
 
+    // 1. ረድፎችን (Rows) ማረጋገጥ
     for (let r = 0; r < 5; r++) {
         let rowWin = true;
         for (let c = 0; c < 5; c++) {
@@ -294,6 +295,7 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         if (rowWin) return true;
     }
 
+    // 2. አምዶችን (Columns) ማረጋገጥ
     for (let c = 0; c < 5; c++) {
         let colWin = true;
         for (let r = 0; r < 5; r++) {
@@ -306,6 +308,7 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         if (colWin) return true;
     }
 
+    // 3. ሰያፍ (Diagonals) ማረጋገጥ
     let diag1Win = true;
     let diag2Win = true;
     for (let i = 0; i < 5; i++) {
@@ -315,6 +318,17 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         if (val2 !== "FREE" && !drawnNumbers.includes(val2)) diag2Win = false;
     }
     if (diag1Win || diag2Win) return true;
+
+    // 4. 🟢 4ቱ ማዕዘኖች (Four Corners) ማረጋገጫ
+    const corners = [
+        grid[0][0], // Top-Left
+        grid[0][4], // Top-Right
+        grid[4][0], // Bottom-Left
+        grid[4][4]  // Bottom-Right
+    ];
+    
+    let cornersWin = corners.every(val => val === "FREE" || drawnNumbers.includes(val));
+    if (cornersWin) return true;
 
     return false;
 }
