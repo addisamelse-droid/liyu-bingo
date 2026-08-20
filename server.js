@@ -275,6 +275,8 @@ function getServerCardNumbers(seed) {
             }
             step++;
         }
+        // Frontend ጋር እንዲገጣጠም ቁጥሮቹን sort አድርግ
+        colNums.sort((a, b) => a - b);
         boardNumbers.push(colNums);
     }
 
@@ -294,54 +296,41 @@ function getServerCardNumbers(seed) {
 // 🟢 የቢንጎ ማረጋገጫ ተግባር
 function verifyBingoWin(cardNum, drawnNumbers) {
     const cardNumbers = getServerCardNumbers(cardNum);
+    // ቁጥሮች ሁሉ number እንዲሆኑ (type mismatch ለማስቀረት)
+    const drawn = (drawnNumbers || []).map(n => Number(n));
+
+    const isDrawn = (val) => val === "FREE" || drawn.includes(Number(val));
+
     const grid = [];
     for (let i = 0; i < 5; i++) {
         grid.push(cardNumbers.slice(i * 5, i * 5 + 5));
     }
 
+    // Rows
     for (let r = 0; r < 5; r++) {
-        let rowWin = true;
-        for (let c = 0; c < 5; c++) {
-            let val = grid[r][c];
-            if (val !== "FREE" && !drawnNumbers.includes(val)) {
-                rowWin = false;
-                break;
-            }
-        }
-        if (rowWin) return true;
+        if (grid[r].every(isDrawn)) return true;
     }
 
+    // Columns
     for (let c = 0; c < 5; c++) {
         let colWin = true;
         for (let r = 0; r < 5; r++) {
-            let val = grid[r][c];
-            if (val !== "FREE" && !drawnNumbers.includes(val)) {
-                colWin = false;
-                break;
-            }
+            if (!isDrawn(grid[r][c])) { colWin = false; break; }
         }
         if (colWin) return true;
     }
 
-    let diag1Win = true;
-    let diag2Win = true;
+    // Diagonals
+    let diag1Win = true, diag2Win = true;
     for (let i = 0; i < 5; i++) {
-        let val1 = grid[i][i];
-        if (val1 !== "FREE" && !drawnNumbers.includes(val1)) diag1Win = false;
-        let val2 = grid[i][4 - i];
-        if (val2 !== "FREE" && !drawnNumbers.includes(val2)) diag2Win = false;
+        if (!isDrawn(grid[i][i])) diag1Win = false;
+        if (!isDrawn(grid[i][4 - i])) diag2Win = false;
     }
     if (diag1Win || diag2Win) return true;
 
-    // 🟢 4 Corners Win (4 ማዕዘን ቁጥሮች)
-    const corners = [
-        grid[0][0], // top-left
-        grid[0][4], // top-right
-        grid[4][0], // bottom-left
-        grid[4][4]  // bottom-right
-    ];
-    const cornersWin = corners.every(val => val === "FREE" || drawnNumbers.includes(val));
-    if (cornersWin) return true;
+    // 4 Corners
+    const corners = [grid[0][0], grid[0][4], grid[4][0], grid[4][4]];
+    if (corners.every(isDrawn)) return true;
 
     return false;
 }
