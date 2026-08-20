@@ -171,8 +171,9 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_new:
         update_phone(user.id, phone_number)
 
-    # 🟢 እዚህ ጋር የቴሌግራም ዩዘር መረጃ ከሊንኩ ጋር እንዲያያዝ ይደረጋል
-    user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}"
+    # 🟢 ቴሌግራም ID እና ስም ከሊንኩ ጋር እንዲያያዙ ይደረጋል
+    safe_name = user.first_name.replace(" ", "_") if user.first_name else "Player"
+    user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}&name={safe_name}"
     inline_game_btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("🕹️ አሁኑኑ ይጫወቱ (Play Game)", web_app=WebAppInfo(url=user_web_app_url))]
     ])
@@ -259,7 +260,8 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 3. Game በተን
     elif "ጨዋታ ጀምር" in text or "Play Game" in text:
         context.user_data['action'] = None
-        user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}"
+        safe_name = user.first_name.replace(" ", "_") if user.first_name else "Player"
+        user_web_app_url = f"{WEB_APP_URL}?tgWebAppStartParam={user.id}&name={safe_name}"
         inline_game_btn = InlineKeyboardMarkup([
             [InlineKeyboardButton("🕹️ Game App ክፈት", web_app=WebAppInfo(url=user_web_app_url))]
         ])
