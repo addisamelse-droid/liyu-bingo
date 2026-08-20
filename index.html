@@ -342,9 +342,13 @@ async function login(){
         
         player = data.player;
         
-        // 🟢 ሶኬቱ ከተገናኘ በኋላ ወዲያውኑ የቴሌግራም ዩዘር ID ን ማስመዝገብ
+        // 🟢 ቴሌግራም ዩዘር ID ን ወደ ሰርቨር በሶኬት ማስመዝገብ
         if (socket.connected) {
             socket.emit('register_telegram_user', player.telegram_id);
+        } else {
+            socket.on('connect', () => {
+                socket.emit('register_telegram_user', player.telegram_id);
+            });
         }
 
         document.getElementById("wallet").textContent = (player && player.balance !== undefined) ? player.balance : 0;
@@ -396,7 +400,16 @@ function handleStakeClick(stake){
     document.getElementById("cardSelectionSection").classList.remove("hide");
 
     showPage("game");
+    
+    // 🟢 ዩዘሩን አረጋግጦ መጀመሪያ ቴሌግራም ID ን ወደ ሰርቨር መላክ
+    const user = getTelegramUser();
+    if (user && user.telegram_id) {
+        socket.emit('register_telegram_user', user.telegram_id);
+    }
+
+    // 🟢 ልክ እንደጠየቁት በቀላሉ stake ን ብቻ እንልካለን
     socket.emit('join_room', stake);
+
     buildCardGrid();
     renderCalledNumbers();
     updateCardGridUI();
