@@ -293,25 +293,16 @@ function getServerCardNumbers(seed) {
     return flatArray;
 }
 
-// 🟢 የቢንጎ ማረጋገጫ ተግባር
-function verifyBingoWin(cardNum, drawnNumbers) {
-    const cardNumbers = getServerCardNumbers(cardNum);
-    // ቁጥሮች ሁሉ number እንዲሆኑ (type mismatch ለማስቀረት)
-    const drawn = (drawnNumbers || []).map(n => Number(n));
-
+// 🟢 አንድ pattern ሙሉ መሆኑን ያረጋግጣል
+function hasAnyWinPattern(cardNumbers, drawn) {
     const isDrawn = (val) => val === "FREE" || drawn.includes(Number(val));
-
     const grid = [];
     for (let i = 0; i < 5; i++) {
         grid.push(cardNumbers.slice(i * 5, i * 5 + 5));
     }
-
-    // Rows
     for (let r = 0; r < 5; r++) {
         if (grid[r].every(isDrawn)) return true;
     }
-
-    // Columns
     for (let c = 0; c < 5; c++) {
         let colWin = true;
         for (let r = 0; r < 5; r++) {
@@ -319,19 +310,68 @@ function verifyBingoWin(cardNum, drawnNumbers) {
         }
         if (colWin) return true;
     }
-
-    // Diagonals
     let diag1Win = true, diag2Win = true;
     for (let i = 0; i < 5; i++) {
         if (!isDrawn(grid[i][i])) diag1Win = false;
         if (!isDrawn(grid[i][4 - i])) diag2Win = false;
     }
     if (diag1Win || diag2Win) return true;
-
-    // 4 Corners
     const corners = [grid[0][0], grid[0][4], grid[4][0], grid[4][4]];
     if (corners.every(isDrawn)) return true;
+    return false;
+}
 
+// 🟢 የቢንጎ ማረጋገጫ — የመጨረሻው ቁጥር አዲስ መስመር ሲያሟላ ብቻ
+// ማሸነፊያ ቁጥር ሲወጣ BINGO ካላሉ፣ ቀጣይ ቁጥር ሲወጣ ያ መስመር አይቆጠርም
+function verifyBingoWin(cardNum, drawnNumbers) {
+    const cardNumbers = getServerCardNumbers(cardNum);
+    const drawn = (drawnNumbers || []).map(n => Number(n));
+
+    if (drawn.length === 0) return false;
+
+    // አሁን ሙሉ የድል pattern አለ?
+    if (!hasAnyWinPattern(cardNumbers, drawn)) return false;
+
+    // ያለ የመጨረሻው ቁጥር pattern ይሟላ ነበር? → ያለፈ መስመር ነው (አይቆጠርም)
+    const withoutLast = drawn.slice(0, -1);
+    if (hasAnyWinPattern(cardNumbers, withoutLast)) {
+        // ቀድሞ ነበር — አዲስ መስመር ካልተጨመረ አይሸነፍም
+        // ነገር ግን ያለ last አንድ pattern ሲሞላ፣ ከ last ጋር ሌላ አዲስ pattern ካለ ይቆጠራል
+        // ቀላል ሕግ፡ last ቁጥር ካርዱ ላይ ከሌለ ወይም ያለፈ win ብቻ ከሆነ አትቀበል
+        // የበለጠ ትክክል፡ last ያለውን አዲስ pattern ይፈልግ
+        return hasNewPatternCompletedByLast(cardNumbers, drawn);
+    }
+
+    // ያለ last አልተሟላም፣ ከ last ጋር ተሟላ → ትክክለኛ አዲስ win
+    return true;
+}
+
+// የመጨረሻው ቁጥር አዲስ መስመር ሲያሟላ ብቻ true
+function hasNewPatternCompletedByLast(cardNumbers, drawn) {
+    const last = drawn[drawn.length - 1];
+    const withoutLast = drawn.slice(0, -1);
+    const isDrawnFull = (val) => val === "FREE" || drawn.includes(Number(val));
+    const isDrawnPrev = (val) => val === "FREE" || withoutLast.includes(Number(val));
+
+    const grid = [];
+    for (let i = 0; i < 5; i++) {
+        grid.push(cardNumbers.slice(i * 5, i * 5 + 5));
+    }
+
+    // እያንዳንዱ pattern፡ አሁን ሙሉ ነው፣ ቀድሞ አልነበረም፣ እና last በ pattern ውስጥ ነው
+    const patterns = [];
+    for (let r = 0; r < 5; r++) patterns.push(grid[r]);
+    for (let c = 0; c < 5; c++) patterns.push([0,1,2,3,4].map(r => grid[r][c]));
+    patterns.push([0,1,2,3,4].map(i => grid[i][i]));
+    patterns.push([0,1,2,3,4].map(i => grid[i][4 - i]));
+    patterns.push([grid[0][0], grid[0][4], grid[4][0], grid[4][4]]);
+
+    for (const pattern of patterns) {
+        const nowComplete = pattern.every(isDrawnFull);
+        const wasComplete = pattern.every(isDrawnPrev);
+        const containsLast = pattern.some(v => Number(v) === Number(last));
+        if (nowComplete && !wasComplete && containsLast) return true;
+    }
     return false;
 }
 
@@ -777,7 +817,7 @@ io.on('connection', (socket) => {
             });
 
             if (winningCardsForThisPlayer.length === 0) {
-                socket.emit('card_error', '⚠️ ገና አልተሞላም! BINGO ትክክል አይደለም።');
+                socket.emit('card_error', '⚠️ BINGO አልተቀበለም! ማሸነፊያ ቁጥር ሲወጣ ካላሉ፣ አዲስ መስመር ማግኘት አለብዎት።');
                 return;
             }
 

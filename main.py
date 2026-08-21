@@ -33,7 +33,7 @@ BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ 
 MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ MongoDB URLህን እዚህ ጻፍ
 ADMIN_ID = "2134795751"         # ← የ Telegram IDህን እዚህ ጻፍ
 
-WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"
+WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"  # ← የ Render URLህን ቀይር
 
 # .env ካለህ ከላይ ያሉትን ባዶ ትተህ ይህን አትሰርዝ
 try:
@@ -60,7 +60,7 @@ BOT_NAME = "Liyu Bingo"
 CURRENCY = "Birr"
 
 # 🟢 Support Group / Channel link (የራስህን ቀይር)
-SUPPORT_GROUP_URL = "https://t.me/liyubingogame"   # ← የ Support Group/Channel linkህን እዚህ ጻፍ
+SUPPORT_GROUP_URL = "https://t.me/abmulu11"   # ← የ Support Group/Channel linkህን እዚህ ጻፍ
 SUPPORT_PERSON_URL = "https://t.me/abmulu11"  # ← የ Admin/Support chat link
 
 # -------------------------------------------------------------
@@ -80,6 +80,41 @@ def init_db():
     db = client['liyu_bingo']
     players_col = db['users']
     print("✅ MongoDB connected (liyu_bingo)")
+
+def get_used_txns_col():
+    init_db()
+    return db['used_transactions']
+
+def is_txn_used(txn_id):
+    if not txn_id or len(str(txn_id).strip()) < 4:
+        return False
+    col = get_used_txns_col()
+    return col.find_one({"txn_id": str(txn_id).strip().upper()}) is not None
+
+def mark_txn_used(txn_id, telegram_id, amount):
+    col = get_used_txns_col()
+    col.insert_one({
+        "txn_id": str(txn_id).strip().upper(),
+        "telegram_id": str(telegram_id),
+        "amount": float(amount),
+        "used_at": __import__("datetime").datetime.utcnow()
+    })
+
+def extract_txn_id(text):
+    """ከመልእክት Transaction ID ያውጣል (ቁጥር ካልሆነው ክፍል)"""
+    # ምሳሌ: "100 TXN123456" ወይም "100 251234567890"
+    parts = text.strip().split()
+    for p in parts:
+        # የመጀመሪያው ቁጥር amount ነው — ቀሪው txn ሊሆን ይችላል
+        if re.match(r'^[A-Za-z0-9\-]{5,}$', p) and not re.match(r'^\d+(\.\d+)?$', p):
+            return p.upper()
+    # ሁሉም ቁጥር ከሆነ ሁለተኛውን እንደ txn ውሰድ
+    nums = re.findall(r'\b\d{6,}\b', text)
+    if len(nums) >= 2:
+        return nums[1]  # ሁለተኛው ረጅም ቁጥር
+    if len(nums) == 1 and len(nums[0]) >= 8:
+        return nums[0]
+    return None
 
 # -------------------------------------------------------------
 # KEYBOARD SETUP (ቋሚ እና ኢንላይን በተኖች)
@@ -354,23 +389,64 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
     # 5. የ Deposit መረጃ መቀበያ
-    elif action == 'waiting_deposit':
+        elif action == 'waiting_deposit':
         context.user_data['action'] = None
         parsed_amount = extract_first_number(text)
+        txn_id = extract_txn_id(text)
+
+        if parsed_amount <= 0:
+            await update.message.reply_text(
+                "❌ ትክክለኛ የብር መጠን አልተገኘም። እንደገና ይሞክሩ።\n<i>ምሳሌ፡ 100 TXN123456</i>",
+                parse_mode="HTML",
+                reply_markup=get_persistent_keyboard()
+            )
+            return
+
+        if not txn_id:
+            await update.message.reply_text(
+                "❌ የ Transaction / የክፍያ ቁጥር አልተገኘም።\nእባክዎ **መጠን + Transaction ID** አብረው ይላኩ።\n<i>ምሳሌ፡ 100 TXN123456</i>",
+                parse_mode="HTML",
+                reply_markup=get_persistent_keyboard()
+            )
+            return
+
+        if is_txn_used(txn_id):
+            await update.message.reply_text(
+                f"❌ ይህ Transaction ID (`{txn_id}`) **አስቀድሞ ተጠቅሟል**።\nድጋሚ መጠቀም አይቻልም።",
+                parse_mode="HTML",
+                reply_markup=get_persistent_keyboard()
+            )
+            return
+
+        # ጊዜያዊ ማስቀመጫ (Admin ሲያጸድቅ ቋሚ ይሆናል)
+        context.user_data['pending_txn'] = txn_id
+        context.user_data['pending_amount'] = parsed_amount
 
         admin_keyboard = [
             [
-                InlineKeyboardButton("✅ አፅድቅ (Approve)", callback_data=f"app_dep_{user.id}_{parsed_amount}"),
-                InlineKeyboardButton("❌ ሰርዝ (Reject)", callback_data=f"rej_dep_{user.id}")
+                InlineKeyboardButton("✅ አፅድቅ", callback_data=f"app_dep_{user.id}_{parsed_amount}_{txn_id}"),
+                InlineKeyboardButton("❌ ሰርዝ", callback_data=f"rej_dep_{user.id}")
             ]
         ]
         await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=f"📥 <b>አዲስ Deposit ጥያቄ!</b>\n\n👤 <b>ተጫዋች:</b> {user.first_name} (@{user.username})\n🆔 <b>ID:</b> <code>{user.id}</code>\n📝 <b>መረጃ:</b> {text}\n💡 <b>የተገመተ መጠን:</b> {parsed_amount} Birr",
+            text=(
+                f"📥 <b>አዲስ ብር መሙያ ጥያቄ!</b>\n\n"
+                f"👤 <b>ተጫዋች:</b> {user.first_name} (@{user.username})\n"
+                f"🆔 <b>ID:</b> <code>{user.id}</code>\n"
+                f"💵 <b>መጠን:</b> {parsed_amount} ብር\n"
+                f"🔢 <b>Transaction ID:</b> <code>{txn_id}</code>\n"
+                f"📝 <b>ሙሉ መልእክት:</b> {text}\n\n"
+                f"⚠️ እባክዎ በ ቴሌብር/ባንክ **ገንዘቡ መግባቱን** ያረጋግጡ ከዚያ Approve ያድርጉ።"
+            ),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(admin_keyboard)
         )
-        await update.message.reply_text("✅ የ Deposit ጥያቄዎ ለ Admin ደርሷል!", reply_markup=get_persistent_keyboard())
+        await update.message.reply_text(
+            f"✅ ጥያቄዎ ተልኳል።\n💵 መጠን: <b>{parsed_amount} ብር</b>\n🔢 Txn: <code>{txn_id}</code>\n\nAdmin ከረጋገጠ በኋላ ቀሪ ሂሳብዎ ይጨምራል።",
+            parse_mode="HTML",
+            reply_markup=get_persistent_keyboard()
+        )
 
     # 6. የ Withdraw መረጃ መቀበያ
     elif action == 'waiting_withdraw':
@@ -441,30 +517,56 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -------------------------------------------------------------
 async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     init_db()
+
+    # 🟢 ሁለት ጊዜ Approve/Reject መከላከያ
+    old_text = query.message.text or ""
+    if "ተፅድቋል" in old_text or "ተፈፅሟል" in old_text or "ውድቅ ተደረገ" in old_text:
+        await query.answer("⚠️ ይህ ጥያቄ አስቀድሞ ተከናውኗል!", show_alert=True)
+        return
+
+    await query.answer()
 
     data = query.data.split("_")
     action_type = data[0]
     sub_type = data[1]
     player_id = int(data[2])
 
-    if action_type == "app" and sub_type == "dep":
+        if action_type == "app" and sub_type == "dep":
         amount = float(data[3]) if len(data) > 3 else 0.0
+        txn_id = data[4] if len(data) > 4 else None
+
+        if txn_id and is_txn_used(txn_id):
+            await query.answer("⚠️ ይህ Transaction አስቀድሞ ተጠቅሟል!", show_alert=True)
+            return
+
         update_balance(player_id, amount)
-        players_col.update_one({"telegram_id": str(player_id)}, {"$push": {"history": {"type": "Deposit", "amount": amount, "status": "Approved"}}})
-        await query.edit_message_text(f"{query.message.text}\n\n✅ <b>ተፅድቋል! ({amount} Birr ተደማምሯል)</b>", parse_mode="HTML")
-        await context.bot.send_message(chat_id=player_id, text=f"🎉 የ Deposit ጥያቄዎ ፅድቆ {amount} Birr ተደምሯል።", reply_markup=get_persistent_keyboard())
+        if txn_id:
+            mark_txn_used(txn_id, player_id, amount)
+        players_col.update_one(
+            {"telegram_id": str(player_id)},
+            {"$push": {"history": {"type": "Deposit", "amount": amount, "txn_id": txn_id or "", "status": "Approved"}}}
+        )
+        await query.edit_message_text(
+            f"{old_text}\n\n✅ <b>ተፅድቋል! ({amount} ብር ተደምሯል)</b>"
+            + (f"\nTxn: <code>{txn_id}</code>" if txn_id else ""),
+            parse_mode="HTML"
+        )
+        await context.bot.send_message(
+            chat_id=player_id,
+            text=f"🎉 የ ብር መሙያ ጥያቄዎ ተፅድቆ {amount} ብር ተደምሯል።",
+            reply_markup=get_persistent_keyboard()
+        )s
 
     elif action_type == "app" and sub_type == "wd":
         amount = float(data[3]) if len(data) > 3 else 0.0
         update_balance(player_id, -amount)
         players_col.update_one({"telegram_id": str(player_id)}, {"$push": {"history": {"type": "Withdraw", "amount": amount, "status": "Completed"}}})
-        await query.edit_message_text(f"{query.message.text}\n\n✅ <b>ክፍያው ተፈፅሟል! ({amount} Birr ተቀንሷል)</b>", parse_mode="HTML")
-        await context.bot.send_message(chat_id=player_id, text=f"🎉 የ Withdraw ጥያቄዎ ተፈፅሟል። {amount} Birr ተቀንሷል።", reply_markup=get_persistent_keyboard())
+        await query.edit_message_text(f"{old_text}\n\n✅ <b>ክፍያው ተፈፅሟል! ({amount} ብር ተቀንሷል)</b>", parse_mode="HTML")
+        await context.bot.send_message(chat_id=player_id, text=f"🎉 የ ብር ማውጫ ጥያቄዎ ተፈፅሟል። {amount} ብር ተቀንሷል።", reply_markup=get_persistent_keyboard())
 
     elif action_type == "rej":
-        await query.edit_message_text(f"{query.message.text}\n\n❌ <b>ጥያቄው ውድቅ ተደረገ!</b>", parse_mode="HTML")
+        await query.edit_message_text(f"{old_text}\n\n❌ <b>ጥያቄው ውድቅ ተደረገ!</b>", parse_mode="HTML")
         await context.bot.send_message(chat_id=player_id, text="❌ ጥያቄዎ ውድቅ ተደረገ።", reply_markup=get_persistent_keyboard())
 
 # -------------------------------------------------------------

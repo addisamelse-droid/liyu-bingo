@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ሊዩ ቢንጎ (Liyu Bingo)</title>
+<title>Liyu Bingo (Liyu Bingo)</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 
@@ -50,14 +50,18 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 
 .numbers-container{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:4px;}
 .numbers-col{display:flex;flex-direction:column;gap:3px;}
-.numbers-col span{background:#d6c8de;border-radius:4px;padding:4px 1px;text-align:center;font-size:10px;}
+.numbers-col span{background:#d6c8de;border-radius:4px;padding:4px 1px;text-align:center;font-size:10px;transition:all 0.2s;}
 .numbers-col span.called{background:#78158a;color:white;font-weight:bold;}
+.numbers-col span.called-latest{background:#ff9800!important;color:white!important;font-weight:900;box-shadow:0 0 8px #ff9800;transform:scale(1.15);}
 
 .winner{background:#ff7b00;color:white;text-align:center;border-radius:15px;padding:12px;margin:8px 0;font-size:15px;font-weight:900;box-shadow:0 5px 15px #8b390044;}
 .winning-card-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;max-width:230px;margin:6px auto;background:#ffffff33;padding:6px;border-radius:10px;}
 .winning-card-cell{background:#f4eef5;color:#351044;padding:6px 2px;text-align:center;border-radius:4px;font-weight:bold;font-size:12px;}
 .winning-card-cell.mark{background:#079b20!important;color:white!important;}
 .winning-card-cell.free{background:#ffb000!important;color:white!important;}
+.winning-card-cell.win-line{background:#2196f3!important;color:white!important;}
+.winning-card-cell.blink-win{animation:blinkWin 0.6s ease-in-out infinite;background:#ffeb3b!important;color:#000!important;font-weight:900;}
+@keyframes blinkWin{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.4;transform:scale(1.2);}}
 
 .historyrow{background:#eee7f2;border-radius:12px;margin:7px 0;padding:12px;}
 .voice{background:#079b20;}
@@ -235,6 +239,7 @@ let currentDrawnNumbers = [];
 let cardNumbersMap = {}; 
 let lastCallsArray = []; 
 let winnerCountdownInterval = null;
+let autoBingoClaimed = false;
 
 document.addEventListener('click', () => {
     let dummyAudio = new Audio();
@@ -552,6 +557,7 @@ socket.on('game_started', (data) => {
     document.getElementById("winnerBox").classList.add("hide");
     document.getElementById("cardSelectionSection").classList.add("hide");
     document.getElementById("mainGameSection").classList.remove("hide");
+    autoBingoClaimed = false;
 
     if (selectedCards && selectedCards.length > 0) {
         renderAllBingoCards();
@@ -582,7 +588,8 @@ socket.on('number_drawn', (data) => {
     updateLastCallsUI();
 
     playRecordedVoice(data.number);
-    updateCalledNumbersUI(currentDrawnNumbers);
+    // አዲስ የወጣው ብርቱ ቀለም፣ የቀሩት የወጡ ተመሳሳይ
+    updateCalledNumbersUI(currentDrawnNumbers, data.number);
 
     if(isAutoMarkEnabled) {
         selectedCards.forEach(cardNum => {
@@ -594,6 +601,19 @@ socket.on('number_drawn', (data) => {
                 }
             });
         });
+
+        // 🟢 Auto Bingo — ማሸነፊያ መስመር ሲሞላ በራሱ BINGO
+        if(!autoBingoClaimed && selectedCards.length > 0) {
+            for(const cardNum of selectedCards) {
+                const nums = cardNumbersMap[cardNum] || getServerCardNumbersJS(cardNum);
+                const winCells = findWinningCellIndexes(nums, currentDrawnNumbers);
+                if(winCells.length > 0) {
+                    autoBingoClaimed = true;
+                    setTimeout(() => { claimBingo(); }, 400);
+                    break;
+                }
+            }
+        }
     }
 });
 
@@ -603,14 +623,44 @@ function updateLastCallsUI() {
     document.getElementById("lastCall3").textContent = lastCallsArray[2] || "-";
 }
 
-function updateCalledNumbersUI(drawn){
+function updateCalledNumbersUI(drawn, latestNum){
+    const last = latestNum !== undefined ? Number(latestNum) : (drawn && drawn.length ? Number(drawn[drawn.length - 1]) : null);
     for(let i = 1; i <= 75; i++){
         const span = document.getElementById(`called_num_${i}`);
-        if(span){
-            if(drawn.includes(i)) span.classList.add("called");
-            else span.classList.remove("called");
+        if(!span) continue;
+        span.classList.remove("called", "called-latest");
+        if(drawn && drawn.includes(i)) {
+            if(i === last) span.classList.add("called-latest");
+            else span.classList.add("called");
         }
     }
+}
+
+// ያሸነፈበት መስመር / diagonal / 4 corners ሴሎችን ይፈልጋል
+// የመጨረሻው ቁጥር አዲስ መስመር ሲያሟላ ብቻ indexes ይመልሳል
+function findWinningCellIndexes(cardNums, drawn){
+    if(!drawn || drawn.length === 0) return [];
+    const last = drawn[drawn.length - 1];
+    const prev = drawn.slice(0, -1);
+    const isOk = (val) => val === "FREE" || drawn.includes(val);
+    const isOkPrev = (val) => val === "FREE" || prev.includes(val);
+    const grid = [];
+    for(let r = 0; r < 5; r++) grid.push(cardNums.slice(r * 5, r * 5 + 5));
+
+    const candidates = [];
+    for(let r = 0; r < 5; r++) candidates.push({ cells: [0,1,2,3,4].map(c => r * 5 + c), vals: grid[r] });
+    for(let c = 0; c < 5; c++) candidates.push({ cells: [0,1,2,3,4].map(r => r * 5 + c), vals: [0,1,2,3,4].map(r => grid[r][c]) });
+    candidates.push({ cells: [0,1,2,3,4].map(i => i * 5 + i), vals: [0,1,2,3,4].map(i => grid[i][i]) });
+    candidates.push({ cells: [0,1,2,3,4].map(i => i * 5 + (4-i)), vals: [0,1,2,3,4].map(i => grid[i][4-i]) });
+    candidates.push({ cells: [0, 4, 20, 24], vals: [cardNums[0], cardNums[4], cardNums[20], cardNums[24]] });
+
+    for(const p of candidates){
+        const now = p.vals.every(isOk);
+        const was = p.vals.every(isOkPrev);
+        const hasLast = p.vals.some(v => v === last || Number(v) === Number(last));
+        if(now && !was && hasLast) return p.cells;
+    }
+    return [];
 }
 
 function renderCalledNumbers(){
@@ -668,6 +718,12 @@ socket.on('game_ended', (data) => {
     
     previewContainer.innerHTML = "";
     
+    // የመጨረሻ የድል ቁጥር (ብልጭ ድርግም)
+    const lastWinNum = (currentDrawnNumbers && currentDrawnNumbers.length)
+        ? currentDrawnNumbers[currentDrawnNumbers.length - 1]
+        : null;
+    const drawnAtWin = (currentDrawnNumbers || []).slice();
+
     winningCards.forEach(cardNum => {
         let cardWrapper = document.createElement("div");
         cardWrapper.style.marginBottom = "8px";
@@ -681,13 +737,22 @@ socket.on('game_ended', (data) => {
         gridDiv.className = "winning-card-grid";
         
         const winningNums = getServerCardNumbersJS(cardNum);
-        winningNums.forEach((num) => {
+        const winCells = findWinningCellIndexes(winningNums, drawnAtWin);
+
+        winningNums.forEach((num, index) => {
             const cell = document.createElement("div");
             cell.textContent = num;
             cell.className = "winning-card-cell";
             
             if(num === "FREE") cell.classList.add("free");
-            else if(currentDrawnNumbers && currentDrawnNumbers.includes(num)) cell.classList.add("mark");
+            else if(drawnAtWin.includes(num)) cell.classList.add("mark");
+
+            // ያሸነፈበት መስመር / 4 corners
+            if(winCells.includes(index)) cell.classList.add("win-line");
+
+            // የመጨረሻው የድል ቁጥር ብልጭ ድርግም
+            if(lastWinNum !== null && num === lastWinNum) cell.classList.add("blink-win");
+
             gridDiv.appendChild(cell);
         });
         
@@ -698,11 +763,15 @@ socket.on('game_ended', (data) => {
     winnerBox.classList.remove("hide");
     document.getElementById("mainGameSection").classList.add("hide");
 
+    // ሰንጠረዥ ላይም የመጨረሻ ቁጥር ብርቱ ቀለም
+    if(lastWinNum) updateCalledNumbersUI(drawnAtWin, lastWinNum);
+
     currentDrawnNumbers = [];
     lastCallsArray = [];
     updateLastCallsUI();
-    updateCalledNumbersUI([]);
-    document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ---";
+    document.getElementById("currentCall").textContent = lastWinNum
+        ? `🏆 የድል ቁጥር: ${lastWinNum}`
+        : "የወጣ ቁጥር: ---";
 
     let timeLeft = 10;
     const countdownEl = document.getElementById("nextGameCountdown");
