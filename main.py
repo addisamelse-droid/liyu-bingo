@@ -34,7 +34,6 @@ MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongo
 ADMIN_ID = "2134795751"         # ← የ Telegram IDህን እዚህ ጻፍ
 
 WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"
-"  # ← የ Render URLህን ቀይር
 
 # .env ካለህ ከላይ ያሉትን ባዶ ትተህ ይህን አትሰርዝ
 try:
