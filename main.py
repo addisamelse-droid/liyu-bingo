@@ -33,7 +33,7 @@ BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ 
 MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ MongoDB URLህን እዚህ ጻፍ
 ADMIN_ID = "2134795751"         # ← የ Telegram IDህን እዚህ ጻፍ
 
-WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com
+WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"
 "  # ← የ Render URLህን ቀይር
 
 # .env ካለህ ከላይ ያሉትን ባዶ ትተህ ይህን አትሰርዝ
