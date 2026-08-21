@@ -388,11 +388,18 @@ function buildCardGrid(){
 }
 
 function handleCardSelectionClick(cardNum){
-    if(takenCards.includes(cardNum)) return;
+    // ሌላ ሰው የያዘውን ካርድ መንካት አይቻልም (የራስህን ግን ማንሳት ይቻላል)
+    if(takenCards.includes(cardNum) && !selectedCards.includes(cardNum)) return;
     
     if(selectedCards.includes(cardNum)){
+        // ካርድ ማንሳት — server select_card toggle ያደርጋል + ገንዘብ ይመልሳል
         selectedCards = selectedCards.filter(c => c !== cardNum);
-        socket.emit('unselect_card', { stake: currentStake, cardNum: cardNum, telegram_id: player ? player.telegram_id : null });
+        socket.emit('select_card', { 
+            stake: currentStake, 
+            cardNum: cardNum, 
+            telegram_id: player ? player.telegram_id : null,
+            playerName: player ? player.name : "ተጫዋች"
+        });
     } else {
         if(selectedCards.length >= 3){
             alert("እባክዎን እስከ 3 ካርዶች ብቻ ይምረጡ!");
@@ -408,7 +415,12 @@ function handleCardSelectionClick(cardNum){
         }
 
         selectedCards.push(cardNum);
-        socket.emit('select_card', { stake: currentStake, cardNum: cardNum, telegram_id: player ? player.telegram_id : null, playerName: player ? player.name : "ተጫዋች" });
+        socket.emit('select_card', { 
+            stake: currentStake, 
+            cardNum: cardNum, 
+            telegram_id: player ? player.telegram_id : null, 
+            playerName: player ? player.name : "ተጫዋች" 
+        });
     }
     updateCardGridUI();
 }
@@ -486,6 +498,35 @@ socket.on('init_state', (data) => {
     document.getElementById("gameStake").textContent = data.stake || currentStake;
     document.getElementById("countdown").textContent = data.timeLeft || "0";
     updatePrizePool(data.playerCount, data.stake || currentStake, data.prizePool);
+
+    // ጨዋታ እየተካሄደ ሳለ ሲገባ → spectator mode
+    if (data.isGameInProgress) {
+        document.getElementById("cardSelectionSection").classList.add("hide");
+        document.getElementById("mainGameSection").classList.remove("hide");
+        document.getElementById("winnerBox").classList.add("hide");
+
+        if (selectedCards && selectedCards.length > 0) {
+            renderAllBingoCards();
+        } else {
+            document.getElementById("bingoCardsContainer").innerHTML = `
+                <div class="box" style="text-align:center; padding:20px;">
+                    <h3>👀 እርስዎ ተመልካች (Spectator) ነዎት</h3>
+                    <p>ጨዋታው እየተካሄደ ነው። እስኪያልቅ ድረስ መመልከት ይችላሉ።</p>
+                </div>`;
+        }
+
+        if (data.drawnNumbers && data.drawnNumbers.length > 0) {
+            currentDrawnNumbers = data.drawnNumbers;
+            updateCalledNumbersUI(data.drawnNumbers);
+            const lastNum = data.drawnNumbers[data.drawnNumbers.length - 1];
+            let letter = 'B';
+            if (lastNum >= 16 && lastNum <= 30) letter = 'I';
+            else if (lastNum >= 31 && lastNum <= 45) letter = 'N';
+            else if (lastNum >= 46 && lastNum <= 60) letter = 'G';
+            else if (lastNum >= 61 && lastNum <= 75) letter = 'O';
+            document.getElementById("currentCall").textContent = `የወጣ ቁጥር: ${letter}${lastNum}`;
+        }
+    }
 });
 
 socket.on('clock_tick', (data) => {
@@ -515,14 +556,21 @@ socket.on('game_started', (data) => {
     if (selectedCards && selectedCards.length > 0) {
         renderAllBingoCards();
     } else {
-        document.getElementById("bingoCardsContainer").innerHTML = `<div class="box" style="text-align:center; padding:20px;"><h3>👀 እርስዎ ተመልካች (Spectator) ነዎት</h3><p>ጨዋታው በመካሄድ ላይ ነው።</p></div>`;
+        document.getElementById("bingoCardsContainer").innerHTML = `
+            <div class="box" style="text-align:center; padding:20px;">
+                <h3>👀 እርስዎ ተመልካች (Spectator) ነዎት</h3>
+                <p>ጨዋታው በመካሄድ ላይ ነው። እስኪያልቅ ድረስ መመልከት ይችላሉ።</p>
+            </div>`;
     }
     
-    currentDrawnNumbers = [];
-    lastCallsArray = [];
-    updateLastCallsUI();
-    updateCalledNumbersUI([]);
-    document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ---";
+    // Spectator ሲገባ ቀድሞ የወጡ ቁጥሮችን አትሰርዝ
+    if (!data.isSpectator) {
+        currentDrawnNumbers = [];
+        lastCallsArray = [];
+        updateLastCallsUI();
+        updateCalledNumbersUI([]);
+        document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ---";
+    }
 });
 
 socket.on('number_drawn', (data) => {
