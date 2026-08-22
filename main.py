@@ -56,7 +56,7 @@ MIN_WITHDRAW = 50.0
 BOT_NAME = "Liyu Bingo"
 CURRENCY = "Birr"
 
-SUPPORT_GROUP_URL = "https://t.me/abmulu11"
+SUPPORT_GROUP_URL = "https://t.me/liyubingogame"
 SUPPORT_PERSON_URL = "https://t.me/abmulu11"
 
 # -------------------------------------------------------------
