@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Liyu Bingo (Liyu Bingo)</title>
+<title>liyu ቢንጎ (Liyu Bingo)</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 
@@ -48,11 +48,22 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 .bingo .mark{background:#079b20!important;color:white!important;}
 .bingo .free{background:#ffb000;color:white;}
 
-.numbers-container{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:4px;}
-.numbers-col{display:flex;flex-direction:column;gap:3px;}
-.numbers-col span{background:#d6c8de;border-radius:4px;padding:4px 1px;text-align:center;font-size:10px;transition:all 0.2s;}
+.numbers-container{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-top:4px;}
+.numbers-col{display:flex;flex-direction:column;gap:2px;}
+.numbers-col span{background:#d6c8de;border-radius:4px;padding:3px 0;text-align:center;font-size:11px;font-weight:700;min-height:22px;line-height:22px;transition:all 0.2s;}
 .numbers-col span.called{background:#78158a;color:white;font-weight:bold;}
-.numbers-col span.called-latest{background:#ff9800!important;color:white!important;font-weight:900;box-shadow:0 0 8px #ff9800;transform:scale(1.15);}
+.numbers-col span.called-latest{background:#ff9800!important;color:white!important;font-weight:900;box-shadow:0 0 8px #ff9800;transform:scale(1.12);}
+.cards-scroll-container{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.cards-scroll-container .box{flex-shrink:0;}
+.cards-scroll-container .bingo div{padding:6px 1px;font-size:13px;}
+@media (max-width:400px){
+  .numbers-col span{font-size:10px;min-height:20px;line-height:20px;padding:2px 0;}
+  .cards-scroll-container .bingo div{padding:5px 1px;font-size:12px;}
+  .bingo-header{font-size:11px;}
+}
+@media (min-width:401px){
+  .numbers-col span{font-size:12px;min-height:24px;line-height:24px;}
+}
 
 .winner{background:#ff7b00;color:white;text-align:center;border-radius:15px;padding:12px;margin:8px 0;font-size:15px;font-weight:900;box-shadow:0 5px 15px #8b390044;}
 .winning-card-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;max-width:230px;margin:6px auto;background:#ffffff33;padding:6px;border-radius:10px;}
@@ -161,13 +172,15 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 <div id="cardSelectionSection" class="box hide">
     <h3>🎫 ከ 1 - 200 እስከ 3 ካርዶች ይምረጡ</h3>
     <div id="cardGridContainer" class="card-grid-container"></div>
-    <p style="font-size: 13px; margin-top: 5px;">የተመረጡ ካርዶችዎ (ከ3 ያልበለጠ): <span id="selectedCardsText" style="font-weight: bold; color: #78168b;">none</span></p>
+    <p style="font-size: 13px; margin-top: 5px;">የተመረጡ ካርዶችዎ (ከ3 ያልበለጠ): <span id="selectedCardsText" style="font-weight: bold; color: #78168b;">ምንም የለም</span></p>
+    <div id="selectedCardsPreview" style="margin-top:12px; max-height:420px; overflow-y:auto;"></div>
 </div>
                                 
 <!-- MAIN GAME VIEW -->
 <div id="mainGameSection" class="hide">
     <div class="current-container">
         <div id="currentCall" class="current">የወጣ ቁጥር: ---</div>
+        <div id="callCountBadge" style="text-align:center;font-size:13px;font-weight:bold;color:#78168b;margin:4px 0;">ጥሪ: 0 / 75</div>
         <div class="last-calls-wrapper">
             <span>የመጨረሻ 3 ጥሪዎች:</span>
             <span id="lastCall1" class="last-call-badge">-</span>
@@ -194,7 +207,8 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 
             <div class="cards-scroll-container" id="bingoCardsContainer"></div>
 
-            <button class="btn voice" style="margin-top:8px; padding:12px; background:#ff9800; font-size:16px;" onclick="claimBingo()">🎉 ቢንጎ (BINGO!)</button>
+            <button id="bingoButton" class="btn voice" style="margin-top:8px; padding:12px; background:#ff9800; font-size:16px;" onclick="claimBingo()">🎉 ቢንጎ (BINGO!)</button>
+            <p id="autoBingoHint" style="display:none; text-align:center; font-size:12px; color:#007bff; margin-top:6px;">⚡ Auto — መስመር ሲሞላ በራሱ BINGO ይጠይቃል</p>
         </div>
     </div>
 </div>
@@ -451,6 +465,38 @@ function updateCardGridUI(){
         if(selectedCards.includes(i)) el.classList.add("selected");
     }
     document.getElementById("selectedCardsText").textContent = selectedCards.length > 0 ? selectedCards.join(", ") : "ምንም የለም (ተመልካች)";
+    renderSelectedCardsPreview();
+}
+
+// ካርድ ሲመረጥ ከታች ሙሉ ቢንጎ ካርድ ማሳየት
+function renderSelectedCardsPreview(){
+    const preview = document.getElementById("selectedCardsPreview");
+    if(!preview) return;
+    preview.innerHTML = "";
+    if(!selectedCards || selectedCards.length === 0) return;
+
+    selectedCards.forEach(cardNum => {
+        const nums = getServerCardNumbersJS(cardNum);
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "background:rgba(120,22,137,0.08);border:1px solid #c9a0d4;border-radius:10px;padding:8px;margin-bottom:8px;";
+        wrap.innerHTML = `<div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:4px;color:#78168b;">🎯 ካርድ #${cardNum}</div>`;
+
+        const header = document.createElement("div");
+        header.className = "bingo-header";
+        header.innerHTML = "<div>B</div><div>I</div><div>N</div><div>G</div><div>O</div>";
+        wrap.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "bingo";
+        nums.forEach((num) => {
+            const cell = document.createElement("div");
+            cell.textContent = num;
+            if(num === "FREE") cell.className = "free mark";
+            grid.appendChild(cell);
+        });
+        wrap.appendChild(grid);
+        preview.appendChild(wrap);
+    });
 }
 
 function renderAllBingoCards(){
@@ -558,6 +604,11 @@ socket.on('game_started', (data) => {
     document.getElementById("cardSelectionSection").classList.add("hide");
     document.getElementById("mainGameSection").classList.remove("hide");
     autoBingoClaimed = false;
+    // Auto ሁነታ ከሆነ BINGO ቁልፍ ደብቅ
+    const bingoBtn = document.getElementById("bingoButton");
+    const hint = document.getElementById("autoBingoHint");
+    if(bingoBtn) bingoBtn.style.display = isAutoMarkEnabled ? "none" : "block";
+    if(hint) hint.style.display = isAutoMarkEnabled ? "block" : "none";
 
     if (selectedCards && selectedCards.length > 0) {
         renderAllBingoCards();
@@ -576,12 +627,24 @@ socket.on('game_started', (data) => {
         updateLastCallsUI();
         updateCalledNumbersUI([]);
         document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ---";
+        const callBadge = document.getElementById("callCountBadge");
+        if(callBadge) callBadge.textContent = "ጥሪ: 0 / 75";
+    } else if (data.drawnNumbers && data.drawnNumbers.length) {
+        const n = data.drawnNumbers.length;
+        const callBadge = document.getElementById("callCountBadge");
+        if(callBadge) callBadge.textContent = `ጥሪ: ${n} / 75  (${n}ኛ ጥሪ)`;
     }
 });
 
 socket.on('number_drawn', (data) => {
     document.getElementById("currentCall").textContent = `የወጣ ቁጥር: ${data.displayNumber}`;
-    currentDrawnNumbers = data.drawnNumbers || [];
+    // drawn ቁጥሮችን number አድርግ (type mismatch ለማስቀረት)
+    currentDrawnNumbers = (data.drawnNumbers || []).map(n => Number(n));
+
+    // የጥሪ ብዛት (ስንተኛ ጥሪ)
+    const callN = currentDrawnNumbers.length;
+    const callBadge = document.getElementById("callCountBadge");
+    if(callBadge) callBadge.textContent = `ጥሪ: ${callN} / 75  (${callN}ኛ ጥሪ)`;
     
     lastCallsArray.unshift(data.displayNumber);
     if(lastCallsArray.length > 3) lastCallsArray.pop();
@@ -593,23 +656,27 @@ socket.on('number_drawn', (data) => {
 
     if(isAutoMarkEnabled) {
         selectedCards.forEach(cardNum => {
+            if(!cardNumbersMap[cardNum]) {
+                cardNumbersMap[cardNum] = getServerCardNumbersJS(cardNum);
+            }
             let nums = cardNumbersMap[cardNum] || [];
             nums.forEach((num, index) => {
-                if(currentDrawnNumbers.includes(num)) {
+                if(num === "FREE" || currentDrawnNumbers.includes(Number(num))) {
                     const cell = document.getElementById(`bingo_cell_${cardNum}_${index}`);
                     if(cell && !cell.classList.contains("mark")) cell.classList.add("mark");
                 }
             });
         });
 
-        // 🟢 Auto Bingo — ማሸነፊያ መስመር ሲሞላ በራሱ BINGO
+        // 🟢 Auto Bingo — መስመር/diagonal/4corners ሲሞላ BINGO ቁልፍ ሳይጫን በራሱ
         if(!autoBingoClaimed && selectedCards.length > 0) {
             for(const cardNum of selectedCards) {
                 const nums = cardNumbersMap[cardNum] || getServerCardNumbersJS(cardNum);
+                cardNumbersMap[cardNum] = nums;
                 const winCells = findWinningCellIndexes(nums, currentDrawnNumbers);
                 if(winCells.length > 0) {
                     autoBingoClaimed = true;
-                    setTimeout(() => { claimBingo(); }, 400);
+                    setTimeout(() => { claimBingo(); }, 300);
                     break;
                 }
             }
@@ -640,10 +707,11 @@ function updateCalledNumbersUI(drawn, latestNum){
 // የመጨረሻው ቁጥር አዲስ መስመር ሲያሟላ ብቻ indexes ይመልሳል
 function findWinningCellIndexes(cardNums, drawn){
     if(!drawn || drawn.length === 0) return [];
-    const last = drawn[drawn.length - 1];
-    const prev = drawn.slice(0, -1);
-    const isOk = (val) => val === "FREE" || drawn.includes(val);
-    const isOkPrev = (val) => val === "FREE" || prev.includes(val);
+    const drawnN = drawn.map(n => Number(n));
+    const last = drawnN[drawnN.length - 1];
+    const prev = drawnN.slice(0, -1);
+    const isOk = (val) => val === "FREE" || drawnN.includes(Number(val));
+    const isOkPrev = (val) => val === "FREE" || prev.includes(Number(val));
     const grid = [];
     for(let r = 0; r < 5; r++) grid.push(cardNums.slice(r * 5, r * 5 + 5));
 
@@ -773,28 +841,37 @@ socket.on('game_ended', (data) => {
         ? `🏆 የድል ቁጥር: ${lastWinNum}`
         : "የወጣ ቁጥር: ---";
 
-    let timeLeft = 10;
+    // Auto ሁነታ → 5 ሰከንድ፣ Manual → 10 ሰከንድ ከዚያ በራሱ ይዘጋል
+    let timeLeft = isAutoMarkEnabled ? 5 : 10;
     const countdownEl = document.getElementById("nextGameCountdown");
     countdownEl.textContent = timeLeft;
 
     if(winnerCountdownInterval) clearInterval(winnerCountdownInterval);
 
+    function closeWinnerAndReset() {
+        clearInterval(winnerCountdownInterval);
+        winnerBox.classList.add("hide");
+        selectedCards = [];
+        takenCards = [];
+        autoBingoClaimed = false;
+        document.getElementById("mainGameSection").classList.add("hide");
+        document.getElementById("cardSelectionSection").classList.remove("hide");
+        buildCardGrid();
+        updateCardGridUI();
+        if (typeof socket !== "undefined" && currentStake) {
+            socket.emit("join_room", {
+                stake: currentStake,
+                telegram_id: player ? player.telegram_id : null,
+                playerName: player ? player.name : "ተጫዋች"
+            });
+        }
+    }
+
     winnerCountdownInterval = setInterval(() => {
         timeLeft--;
         countdownEl.textContent = timeLeft;
-
         if(timeLeft <= 0) {
-            clearInterval(winnerCountdownInterval);
-            winnerBox.classList.add("hide");
-            
-            selectedCards = []; 
-            takenCards = [];
-            
-            document.getElementById("mainGameSection").classList.add("hide");
-            document.getElementById("cardSelectionSection").classList.remove("hide"); 
-            
-            buildCardGrid();
-            updateCardGridUI();
+            closeWinnerAndReset();
         }
     }, 1000);
 });
@@ -833,10 +910,15 @@ function toggleVoice(){
 function toggleAutoMode(){
     isAutoMarkEnabled = !isAutoMarkEnabled;
     const btn = document.getElementById("autoModeButton");
+    const bingoBtn = document.getElementById("bingoButton");
+    const hint = document.getElementById("autoBingoHint");
     if(btn) {
         btn.textContent = isAutoMarkEnabled ? "⚡ ራሱ ይጥላት" : "✋ በእጅ (Manual)";
         btn.style.background = isAutoMarkEnabled ? "#007bff" : "#6c757d";
     }
+    // Auto ሲሆን BINGO ቁልፍ አያስፈልግም — ይደበቃል
+    if(bingoBtn) bingoBtn.style.display = isAutoMarkEnabled ? "none" : "block";
+    if(hint) hint.style.display = isAutoMarkEnabled ? "block" : "none";
 }
 
 socket.on('update_history', (history) => {
