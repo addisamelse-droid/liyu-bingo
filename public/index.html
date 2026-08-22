@@ -148,6 +148,16 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 }
 .zoom-controls{display:flex;justify-content:center;gap:8px;margin:6px 0;}
 .zoom-controls button{padding:6px 14px;border:0;border-radius:8px;background:#78168b;color:#fff;font-weight:bold;font-size:16px;cursor:pointer;}
+
+.afro-top-call{display:flex;align-items:center;gap:8px;margin:6px 0 8px;flex-wrap:wrap;}
+.cards-2col{display:grid!important;grid-template-columns:1fr 1fr;gap:6px;max-height:45vh;}
+.cards-2col .box{margin:0!important;padding:6px!important;}
+.cards-2col .bingo div{padding:4px 1px;font-size:11px;}
+.cards-2col h4{font-size:11px!important;}
+@media (max-width:360px){
+  .cards-2col{grid-template-columns:1fr;}
+}
+
 </style>
 </head>
 <body>
@@ -214,8 +224,25 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
                                 
 <!-- MAIN GAME VIEW -->
 <div id="mainGameSection" class="hide">
+    <!-- TOP: Current Call + Last 3 -->
+    <div class="afro-top-call">
+        <div class="afro-call-box" style="flex:1;">
+            <div class="afro-call-label">Current Call</div>
+            <div id="currentCall" class="afro-call-num">—</div>
+        </div>
+        <div class="last-calls-row" style="margin:0;">
+            <span id="lastCall1" class="last-call-circle">-</span>
+            <span id="lastCall2" class="last-call-circle">-</span>
+            <span id="lastCall3" class="last-call-circle">-</span>
+        </div>
+        <div style="display:flex;gap:4px;flex-direction:column;">
+            <button id="voiceButton" class="btn voice" onclick="toggleVoice()" style="margin:0;padding:6px 8px;font-size:10px;width:auto;background:#079b20;">🔊</button>
+            <button id="autoModeButton" class="btn" onclick="toggleAutoMode()" style="margin:0;padding:6px 8px;font-size:10px;width:auto;background:#007bff;">⚡</button>
+        </div>
+    </div>
+
     <div class="game-layout">
-        <!-- LEFT: 1-75 board -->
+        <!-- LEFT: 1-75 -->
         <div class="box" style="margin:0; padding:6px;">
             <div class="bingo-header" style="margin-top:0;">
                 <div style="background:#f9a825;border-radius:4px;">B</div>
@@ -227,34 +254,21 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
             <div id="calledNumbers" class="numbers-container"></div>
         </div>
 
-        <!-- RIGHT: call + controls + cards -->
+        <!-- RIGHT: player cards (2-col) + Bingo near cards -->
         <div>
-            <div class="afro-call-box">
-                <div class="afro-call-label">Current Call</div>
-                <div id="currentCall" class="afro-call-num">—</div>
-            </div>
-            <div class="last-calls-row">
-                <span id="lastCall1" class="last-call-circle">-</span>
-                <span id="lastCall2" class="last-call-circle">-</span>
-                <span id="lastCall3" class="last-call-circle">-</span>
-            </div>
-            <div style="display:flex;gap:6px;margin:6px 0;justify-content:center;">
-                <button id="voiceButton" class="btn voice" onclick="toggleVoice()" style="margin:0;padding:8px 10px;font-size:11px;width:auto;background:#079b20;">🔊 Sound</button>
-                <button id="autoModeButton" class="btn" onclick="toggleAutoMode()" style="margin:0;padding:8px 10px;font-size:11px;width:auto;background:#007bff;">⚡ Auto</button>
-            </div>
-            <div class="zoom-controls">
+            <div class="zoom-controls" style="margin-bottom:4px;">
                 <button type="button" onclick="zoomCards(-0.1)">➖</button>
                 <button type="button" onclick="zoomCards(0.1)">➕</button>
-                <button type="button" onclick="zoomCards(0)" style="font-size:12px;">100%</button>
+                <button type="button" onclick="zoomCards(0)" style="font-size:11px;">100%</button>
             </div>
-            <div class="cards-scroll-container" id="bingoCardsContainer"></div>
+            <div class="cards-scroll-container cards-2col" id="bingoCardsContainer"></div>
+            <button type="button" class="btn-bingo" id="bingoButton" onclick="claimBingo()" style="width:100%;margin-top:8px;border:0;border-radius:14px;padding:14px;font-weight:900;font-size:16px;">🎉 Bingo!</button>
         </div>
     </div>
 
     <div class="game-bottom-bar">
         <button type="button" class="btn-leave" onclick="showPage('home')">← Leave</button>
         <button type="button" class="btn-refresh" onclick="refreshGameInside()">🔄 Refresh</button>
-        <button type="button" class="btn-bingo" id="bingoButton" onclick="claimBingo()">Bingo!</button>
     </div>
 </div>
 
@@ -275,6 +289,8 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 <div class="tabs">
 <button onclick="showPage('home')">🎮<br>ጨዋታ</button>
 <button onclick="showHistory()">🕘<br>ታሪክ</button>
+<button onclick="showPage('home'); setTimeout(function(){ var e=document.getElementById('profileBox'); if(e) e.scrollIntoView({behavior:'smooth'}); }, 100);">👤<br>መገለጫ</button>
+<button onclick="showPage('home'); setTimeout(function(){ var e=document.querySelector('.wallet'); if(e) e.scrollIntoView({behavior:'smooth'}); }, 100);">💳<br>ኪስ</button>
 </div>
 
 <script>
