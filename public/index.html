@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>liyu ቢንጎ (Liyu Bingo)</title>
+<title>ሊዩ ቢንጎ (Liyu Bingo)</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 
@@ -82,8 +82,9 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 .loginIcon{font-size:65px;margin-bottom:10px;}
 
 .card-grid-container {
-    max-height: 220px;
+    max-height: 55vh;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 6px;
@@ -113,10 +114,14 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
     color: white;
 }
 .cards-scroll-container {
-    max-height: 380px;
+    max-height: 50vh;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding-right: 4px;
+    transform-origin: top center;
 }
+.zoom-controls{display:flex;justify-content:center;gap:8px;margin:6px 0;}
+.zoom-controls button{padding:6px 14px;border:0;border-radius:8px;background:#78168b;color:#fff;font-weight:bold;font-size:16px;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -205,10 +210,15 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
                 <button class="btn" style="margin:0; padding:8px; font-size:11px; background:#b51a1a;" onclick="refreshGameInside()">🔄 አድስ</button>
             </div>
 
+            <div class="zoom-controls">
+                <button type="button" onclick="zoomCards(-0.1)" title="አሳንስ">➖</button>
+                <button type="button" onclick="zoomCards(0.1)" title="አጉላ">➕</button>
+                <button type="button" onclick="zoomCards(0)" title="መደበኛ" style="font-size:12px;">100%</button>
+            </div>
             <div class="cards-scroll-container" id="bingoCardsContainer"></div>
 
             <button id="bingoButton" class="btn voice" style="margin-top:8px; padding:12px; background:#ff9800; font-size:16px;" onclick="claimBingo()">🎉 ቢንጎ (BINGO!)</button>
-            <p id="autoBingoHint" style="display:none; text-align:center; font-size:12px; color:#007bff; margin-top:6px;">⚡ Auto — መስመር ሲሞላ በራሱ BINGO ይጠይቃል</p>
+            <p id="autoBingoHint" style="display:none; text-align:center; font-size:12px; color:#007bff; margin-top:6px;">⚡ Auto — መስመር ሲሞላ በራሱ BINGO ይጠይቃል (ቁልፍም ይቆያል)</p>
         </div>
     </div>
 </div>
@@ -604,11 +614,14 @@ socket.on('game_started', (data) => {
     document.getElementById("cardSelectionSection").classList.add("hide");
     document.getElementById("mainGameSection").classList.remove("hide");
     autoBingoClaimed = false;
-    // Auto ሁነታ ከሆነ BINGO ቁልፍ ደብቅ
-    const bingoBtn = document.getElementById("bingoButton");
+    cardsZoom = 1;
+    const cardsBox = document.getElementById("bingoCardsContainer");
+    if(cardsBox) { cardsBox.style.transform = "scale(1)"; cardsBox.style.marginBottom = "0"; }
     const hint = document.getElementById("autoBingoHint");
-    if(bingoBtn) bingoBtn.style.display = isAutoMarkEnabled ? "none" : "block";
     if(hint) hint.style.display = isAutoMarkEnabled ? "block" : "none";
+    // BINGO ቁልፍ ሁልጊዜ ይታያል
+    const bingoBtn = document.getElementById("bingoButton");
+    if(bingoBtn) bingoBtn.style.display = "block";
 
     if (selectedCards && selectedCards.length > 0) {
         renderAllBingoCards();
@@ -774,12 +787,15 @@ socket.on('game_ended', (data) => {
     const previewContainer = document.getElementById("winningCardPreview");
     
     let winningCards = data.winningCards || (data.winningCard ? [data.winningCard] : []);
-    let cardsText = winningCards.length > 0 ? winningCards.join(", ") : "የለም";
+    let cardsText = winningCards.length > 0 ? winningCards.map(c => "#" + c).join(", ") : "የለም";
+    const myWins = winningCards.filter(c => selectedCards.includes(Number(c)) || selectedCards.includes(c));
+    const myWinsText = myWins.length > 0 ? myWins.map(c => "#" + c).join(", ") : "";
     
     winnerDetails.innerHTML = `
         <div style="background: rgba(255, 215, 0, 0.2); border: 1px solid gold; padding: 10px; border-radius: 8px; margin-bottom: 8px;">
             <b>🏆 አሸናፊ:</b> <span style="color: yellow; font-size: 18px; font-weight: bold;">${data.winnerName || "ተጫዋች"}</span><br>
-            <b>🎯 ያሸነፈባቸው ካርዶች:</b> <span style="color: #00e676; font-size: 16px; font-weight: bold;">#${cardsText}</span><br>
+            <b>🎯 ያሸነፈባቸው ካርዶች:</b> <span style="color: #00e676; font-size: 16px; font-weight: bold;">${cardsText}</span><br>
+            ${myWinsText ? `<b>✅ የእርስዎ ያሸነፈ ካርድ:</b> <span style="color:#ffeb3b;font-size:16px;font-weight:bold;">${myWinsText}</span><br>` : ""}
             <b>💰 የተከፈለው ሽልማት:</b> <span style="color: #fff; font-weight: bold;">${data.prizeAmount} ብር</span>
         </div>
     `;
@@ -841,8 +857,8 @@ socket.on('game_ended', (data) => {
         ? `🏆 የድል ቁጥር: ${lastWinNum}`
         : "የወጣ ቁጥር: ---";
 
-    // Auto ሁነታ → 5 ሰከንድ፣ Manual → 10 ሰከንድ ከዚያ በራሱ ይዘጋል
-    let timeLeft = isAutoMarkEnabled ? 5 : 10;
+    // Auto / Manual ሁለቱም 10 ሰከንድ ከዚያ በራሱ ይዘጋል
+    let timeLeft = 10;
     const countdownEl = document.getElementById("nextGameCountdown");
     countdownEl.textContent = timeLeft;
 
@@ -910,15 +926,23 @@ function toggleVoice(){
 function toggleAutoMode(){
     isAutoMarkEnabled = !isAutoMarkEnabled;
     const btn = document.getElementById("autoModeButton");
-    const bingoBtn = document.getElementById("bingoButton");
     const hint = document.getElementById("autoBingoHint");
     if(btn) {
         btn.textContent = isAutoMarkEnabled ? "⚡ ራሱ ይጥላት" : "✋ በእጅ (Manual)";
         btn.style.background = isAutoMarkEnabled ? "#007bff" : "#6c757d";
     }
-    // Auto ሲሆን BINGO ቁልፍ አያስፈልግም — ይደበቃል
-    if(bingoBtn) bingoBtn.style.display = isAutoMarkEnabled ? "none" : "block";
+    // Auto ሲሆንም BINGO ቁልፍ ይቆያል (አይጠፋም)
     if(hint) hint.style.display = isAutoMarkEnabled ? "block" : "none";
+}
+
+let cardsZoom = 1;
+function zoomCards(delta){
+    const box = document.getElementById("bingoCardsContainer");
+    if(!box) return;
+    if(delta === 0) cardsZoom = 1;
+    else cardsZoom = Math.min(1.6, Math.max(0.7, cardsZoom + delta));
+    box.style.transform = `scale(${cardsZoom})`;
+    box.style.marginBottom = cardsZoom > 1 ? `${(cardsZoom - 1) * 80}px` : "0";
 }
 
 socket.on('update_history', (history) => {
