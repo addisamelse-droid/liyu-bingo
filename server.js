@@ -436,8 +436,11 @@ function startRoomTimer(stake) {
             clearInterval(room.timerInterval);
             room.timerInterval = null;
 
-            if (totalCardsBought === 0) {
-                room.takenCards.push(1);
+            // ባዶ ክፍል — ጨዋታ አትጀምር (dummy card አይጨመርም)
+            if (totalCardsBought === 0 || activePlayerCount === 0) {
+                room.timeLeft = 30;
+                startRoomTimer(stakeNum);
+                return;
             }
 
             startRoomGame(stakeNum);
@@ -450,13 +453,18 @@ function startRoomGame(stake) {
     const room = rooms[stakeNum];
     if (!room) return;
 
-    room.isGameInProgress = true;
-    room.drawnNumbers = [];
-
+    // አስቀድሞ draw ካለ አቁም
+    if (room.drawInterval) {
+        clearInterval(room.drawInterval);
+        room.drawInterval = null;
+    }
     if (room.timerInterval) {
         clearInterval(room.timerInterval);
         room.timerInterval = null;
     }
+
+    room.isGameInProgress = true;
+    room.drawnNumbers = [];
 
     const totalCardsBought = room.takenCards.length;
     const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
@@ -628,9 +636,47 @@ io.on('connection', (socket) => {
         sendTelegramNotification(adminMsg, inlineKeyboard);
     });
 
+    // 🟢 ከቀድሞ room ውጣ (ካርድ refund አይደለም ከ game በፊት ብቻ)
+    function leaveCurrentRoom(socket, reason) {
+        const oldStake = socket.currentStake;
+        if (!oldStake || !rooms[oldStake]) return;
+        const oldRoom = rooms[oldStake];
+        try { socket.leave(`room_${oldStake}`); } catch (e) {}
+
+        const player = oldRoom.players[socket.id];
+        if (player) {
+            // ጨዋታ ካልጀመረ ካርዶችን ነፃ አድርግ
+            if (!oldRoom.isGameInProgress && player.cardNums && player.cardNums.length) {
+                oldRoom.takenCards = (oldRoom.takenCards || []).filter(
+                    c => !(player.cardNums || []).includes(c)
+                );
+            }
+            delete oldRoom.players[socket.id];
+            io.to(`room_${oldStake}`).emit('update_taken_cards', oldRoom.takenCards || []);
+            const active = getActivePlayerCount(oldRoom);
+            const prize = Math.floor((oldRoom.takenCards || []).length * oldRoom.stake * 0.8);
+            io.to(`room_${oldStake}`).emit('update_player_count', {
+                playerCount: active,
+                prizePool: prize
+            });
+        }
+        socket.currentStake = null;
+    }
+
+    socket.on('leave_room', () => {
+        leaveCurrentRoom(socket, 'leave');
+        socket.emit('left_room', { ok: true });
+    });
+
     // 🟢 ተጫዋች Room ውስጥ ሲገባ
     socket.on('join_room', (stake) => {
         const stakeNum = parseInt(stake) || 10;
+
+        // ከሌላ room ከመጣ — የቀድሞውን ለይ
+        if (socket.currentStake && socket.currentStake !== stakeNum) {
+            leaveCurrentRoom(socket, 'switch');
+        }
+
         socket.currentStake = stakeNum;
         socket.join(`room_${stakeNum}`);
         
@@ -654,7 +700,7 @@ io.on('connection', (socket) => {
 
         socket.emit('update_taken_cards', room.takenCards);
 
-        // ጨዋታ እየተካሄደ ከሆነ → አዲስ ተጫዋች እንደ spectator ያየዋል
+        // ጨዋታ እየተካሄደ ከሆነ → spectator ብቻ (ካርድ አይይዝም)
         if (room.isGameInProgress) {
             socket.emit('game_started', {
                 gameId: room.gameId,
@@ -662,7 +708,6 @@ io.on('connection', (socket) => {
                 isSpectator: true
             });
 
-            // እስካሁን የወጡ ቁጥሮችን ላክ
             if (room.drawnNumbers && room.drawnNumbers.length > 0) {
                 const lastNum = room.drawnNumbers[room.drawnNumbers.length - 1];
                 const letter = getBingoLetter(lastNum);

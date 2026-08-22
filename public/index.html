@@ -185,6 +185,36 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 .game-bottom-bar{bottom:62px;}
 .page{padding-bottom:78px;}
 
+
+/* 1-75 full board — space-fit, no cut-off */
+.numbers-container{
+  display:grid!important;
+  grid-template-columns:repeat(5,1fr)!important;
+  gap:2px!important;
+  margin-top:4px!important;
+  width:100%;
+}
+.numbers-col{display:flex!important;flex-direction:column!important;gap:2px!important;min-width:0;}
+.numbers-col span{
+  background:#d6c8de;
+  border-radius:4px;
+  text-align:center;
+  font-weight:700;
+  font-size:clamp(9px, 2.6vw, 12px)!important;
+  min-height:0!important;
+  line-height:1.35!important;
+  padding:3px 0!important;
+  transition:background 0.15s, color 0.15s;
+  transform:none!important;
+}
+.numbers-col span.called{background:#78158a;color:#fff;}
+.numbers-col span.called-latest{
+  background:#ff9800!important;color:#fff!important;font-weight:900;
+  box-shadow:none!important;transform:none!important;
+}
+#mainGameSection .box{overflow:visible;}
+.game-layout{align-items:start;}
+
 </style>
 </head>
 <body>
@@ -289,7 +319,7 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
     </div>
 
     <div class="game-bottom-bar">
-        <button type="button" class="btn-leave" onclick="showPage('home')">← Leave</button>
+        <button type="button" class="btn-leave" onclick="leaveToHome()">← Leave</button>
         <button type="button" class="btn-refresh" onclick="refreshGameInside()">🔄 Refresh</button>
     </div>
 </div>
@@ -389,7 +419,8 @@ socket.on('connect', () => {
 
 let player = null;
 let currentStake = 10;
-let selectedCards = []; 
+let selectedCards = [];
+let gameInProgress = false; 
 let takenCards = [];
 let voiceEnabled = true;
 let isAutoMarkEnabled = true; 
@@ -520,14 +551,34 @@ function showPage(id){
     }
 }
 
+function leaveToHome(){
+    socket.emit('leave_room');
+    gameInProgress = false;
+    selectedCards = [];
+    takenCards = [];
+    currentDrawnNumbers = [];
+    showPage('home');
+}
 function handleStakeClick(stake){
+    // ከቀድሞ ክፍል ውጣ — የቀድሞ ጨዋታ ለዚህ ተጫዋች ይቆማል
+    if (currentStake && currentStake !== stake) {
+        socket.emit('leave_room');
+    }
     currentStake = stake;
+    gameInProgress = false;
+    currentDrawnNumbers = [];
+    lastCallsArray = [];
+    autoBingoClaimed = false;
+    selectedCards = [];
+    takenCards = [];
     document.getElementById("gameStake").textContent = stake;
-    selectedCards = []; 
     document.getElementById("winnerBox").classList.add("hide");
-
     document.getElementById("mainGameSection").classList.add("hide");
     document.getElementById("cardSelectionSection").classList.remove("hide");
+    const callBadge = document.getElementById("callCountBadge");
+    if (callBadge) callBadge.textContent = "0";
+    document.getElementById("currentCall").textContent = "—";
+    updateLastCallsUI();
 
     showPage("game");
     socket.emit('join_room', stake);
@@ -560,6 +611,10 @@ function buildCardGrid(){
 }
 
 function handleCardSelectionClick(cardNum){
+    if (gameInProgress) {
+        alert("⚠️ ጨዋታው እየተካሄደ ነው! አሁን ካርድ መያዝ አይቻልም።");
+        return;
+    }
     // ሌላ ሰው የያዘውን ካርድ መንካት አይቻልም (የራስህን ግን ማንሳት ይቻላል)
     if(takenCards.includes(cardNum) && !selectedCards.includes(cardNum)) return;
     
@@ -702,12 +757,14 @@ socket.on('init_state', (data) => {
     document.getElementById("gameStake").textContent = data.stake || currentStake;
     document.getElementById("countdown").textContent = data.timeLeft || "0";
     updatePrizePool(data.playerCount, data.stake || currentStake, data.prizePool);
+    gameInProgress = !!data.isGameInProgress;
 
-    // ጨዋታ እየተካሄደ ሳለ ሲገባ → spectator mode
+    // ጨዋታ እየተካሄደ ሳለ ሲገባ → spectator mode (ካርድ አይይዝም)
     if (data.isGameInProgress) {
         document.getElementById("cardSelectionSection").classList.add("hide");
         document.getElementById("mainGameSection").classList.remove("hide");
         document.getElementById("winnerBox").classList.add("hide");
+        selectedCards = [];
 
         if (selectedCards && selectedCards.length > 0) {
             renderAllBingoCards();
@@ -720,7 +777,7 @@ socket.on('init_state', (data) => {
         }
 
         if (data.drawnNumbers && data.drawnNumbers.length > 0) {
-            currentDrawnNumbers = data.drawnNumbers;
+            currentDrawnNumbers = (data.drawnNumbers || []).map(n => Number(n));
             updateCalledNumbersUI(data.drawnNumbers);
             const lastNum = data.drawnNumbers[data.drawnNumbers.length - 1];
             let letter = 'B';
@@ -753,6 +810,10 @@ socket.on('clock_tick', (data) => {
 });
 
 socket.on('game_started', (data) => {
+    gameInProgress = true;
+    window._prevLatestCalled = null;
+    renderCalledNumbers();
+    updateCalledNumbersUI([]);
     document.getElementById("winnerBox").classList.add("hide");
     document.getElementById("cardSelectionSection").classList.add("hide");
     document.getElementById("mainGameSection").classList.remove("hide");
@@ -789,45 +850,47 @@ socket.on('game_started', (data) => {
 
 socket.on('number_drawn', (data) => {
     document.getElementById("currentCall").textContent = data.displayNumber || data.number || "—";
-    // drawn ቁጥሮችን number አድርግ (type mismatch ለማስቀረት)
     currentDrawnNumbers = (data.drawnNumbers || []).map(n => Number(n));
 
-    // የጥሪ ቁጥር ብቻ (1, 2, 23…)
     const callN = currentDrawnNumbers.length;
     const callBadge = document.getElementById("callCountBadge");
     if(callBadge) callBadge.textContent = String(callN);
-    
-    lastCallsArray.unshift(data.displayNumber);
-    if(lastCallsArray.length > 3) lastCallsArray.pop();
-    updateLastCallsUI();
 
-    playRecordedVoice(data.number);
-    // አዲስ የወጣው ብርቱ ቀለም፣ የቀሩት የወጡ ተመሳሳይ
+    // replay ሲሆን last-3 አትበላሽ
+    if (!data.isReplay) {
+        const disp = data.displayNumber || String(data.number);
+        lastCallsArray.unshift(disp);
+        if(lastCallsArray.length > 3) lastCallsArray.pop();
+        updateLastCallsUI();
+        playRecordedVoice(data.number);
+    }
     updateCalledNumbersUI(currentDrawnNumbers, data.number);
 
-    if(isAutoMarkEnabled) {
+    if(isAutoMarkEnabled && selectedCards.length > 0) {
+        const justDrawn = Number(data.number);
         selectedCards.forEach(cardNum => {
             if(!cardNumbersMap[cardNum]) {
                 cardNumbersMap[cardNum] = getServerCardNumbersJS(cardNum);
             }
-            let nums = cardNumbersMap[cardNum] || [];
+            const nums = cardNumbersMap[cardNum] || [];
             nums.forEach((num, index) => {
-                if(num === "FREE" || currentDrawnNumbers.includes(Number(num))) {
+                if (num === "FREE") return;
+                if (Number(num) === justDrawn) {
                     const cell = document.getElementById(`bingo_cell_${cardNum}_${index}`);
                     if(cell && !cell.classList.contains("mark")) cell.classList.add("mark");
                 }
             });
         });
 
-        // 🟢 Auto Bingo — መስመር/diagonal/4corners ሲሞላ BINGO ቁልፍ ሳይጫን በራሱ
-        if(!autoBingoClaimed && selectedCards.length > 0) {
+        // Auto Bingo — አዲስ መስመር ሲሞላ ብቻ
+        if(!autoBingoClaimed) {
             for(const cardNum of selectedCards) {
                 const nums = cardNumbersMap[cardNum] || getServerCardNumbersJS(cardNum);
                 cardNumbersMap[cardNum] = nums;
                 const winCells = findWinningCellIndexes(nums, currentDrawnNumbers);
                 if(winCells.length > 0) {
                     autoBingoClaimed = true;
-                    setTimeout(() => { claimBingo(); }, 300);
+                    setTimeout(() => { claimBingo(); }, 250);
                     break;
                 }
             }
@@ -842,16 +905,44 @@ function updateLastCallsUI() {
 }
 
 function updateCalledNumbersUI(drawn, latestNum){
-    const last = latestNum !== undefined ? Number(latestNum) : (drawn && drawn.length ? Number(drawn[drawn.length - 1]) : null);
-    for(let i = 1; i <= 75; i++){
-        const span = document.getElementById(`called_num_${i}`);
-        if(!span) continue;
-        span.classList.remove("called", "called-latest");
-        if(drawn && drawn.includes(i)) {
-            if(i === last) span.classList.add("called-latest");
-            else span.classList.add("called");
+    // board ከሌለ አስቀድሞ ግንባ
+    if (!document.getElementById('called_num_1')) renderCalledNumbers();
+    const drawnSet = new Set((drawn || []).map(n => Number(n)));
+    const last = latestNum !== undefined && latestNum !== null
+        ? Number(latestNum)
+        : (drawn && drawn.length ? Number(drawn[drawn.length - 1]) : null);
+
+    // ፈጣን update — ቀድሞ latest የነበረውን called ብቻ አድርግ
+    if (window._prevLatestCalled != null) {
+        const prev = document.getElementById('called_num_' + window._prevLatestCalled);
+        if (prev) {
+            prev.classList.remove('called-latest');
+            if (drawnSet.has(window._prevLatestCalled)) prev.classList.add('called');
         }
     }
+    // ሙሉ sync (አስተማማኝ) — ቀላል loop
+    for (let i = 1; i <= 75; i++) {
+        const span = document.getElementById('called_num_' + i);
+        if (!span) continue;
+        const isCalled = drawnSet.has(i);
+        const isLatest = isCalled && i === last;
+        if (isLatest) {
+            if (!span.classList.contains('called-latest')) {
+                span.classList.remove('called');
+                span.classList.add('called-latest');
+            }
+        } else if (isCalled) {
+            if (!span.classList.contains('called')) {
+                span.classList.remove('called-latest');
+                span.classList.add('called');
+            } else {
+                span.classList.remove('called-latest');
+            }
+        } else {
+            span.classList.remove('called', 'called-latest');
+        }
+    }
+    window._prevLatestCalled = last;
 }
 
 // ያሸነፈበት መስመር / diagonal / 4 corners ሴሎችን ይፈልጋል
@@ -1006,6 +1097,7 @@ socket.on('game_ended', (data) => {
         selectedCards = [];
         takenCards = [];
         autoBingoClaimed = false;
+        gameInProgress = false;
         document.getElementById("mainGameSection").classList.add("hide");
         document.getElementById("cardSelectionSection").classList.remove("hide");
         buildCardGrid();
@@ -1029,6 +1121,7 @@ socket.on('game_ended', (data) => {
 });
 
 socket.on('reset_player_card', () => {
+    gameInProgress = false;
     currentDrawnNumbers = [];
     lastCallsArray = [];
     updateLastCallsUI();
