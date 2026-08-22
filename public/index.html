@@ -26,21 +26,47 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 .last-calls-wrapper{display:flex;justify-content:center;align-items:center;gap:8px;font-size:14px;font-weight:bold;}
 .last-call-badge{background:#ffffff33;padding:4px 10px;border-radius:8px;font-size:15px;}
 
-.count{text-align:center;font-size:35px;font-weight:900;color:#78168b;margin:4px;}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
-.stat{background:#eee7f2;border-radius:10px;text-align:center;padding:8px 2px;font-weight:900;font-size:11px;}
+.count{text-align:center;font-size:28px;font-weight:900;color:#78168b;margin:4px;}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:6px;}
+.stat{background:#eee7f2;border-radius:12px;text-align:center;padding:8px 2px;font-weight:900;font-size:10px;color:#55105d;}
+.stat span{display:block;font-size:13px;color:#351044;margin-top:2px;}
 
 .game-layout {
     display: grid;
-    grid-template-columns: 1fr 1.8fr;
+    grid-template-columns: 1.1fr 1fr;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 6px;
+    align-items: start;
 }
-@media (max-width: 480px) {
-    .game-layout {
-        grid-template-columns: 1fr 1.6fr;
-    }
+@media (max-width: 360px) {
+    .game-layout { grid-template-columns: 1fr 1fr; gap: 4px; }
 }
+.afro-call-box{
+    background:linear-gradient(135deg,#6b1b9a,#9c27b0);
+    border-radius:18px;padding:12px;color:#fff;text-align:center;
+    box-shadow:0 4px 12px #55105d55;
+}
+.afro-call-label{font-size:14px;font-weight:800;opacity:.95;}
+.afro-call-num{
+    display:inline-block;margin-top:6px;background:#ff9800;color:#fff;
+    font-size:22px;font-weight:900;padding:8px 16px;border-radius:50%;
+    min-width:52px;box-shadow:0 2px 8px #0003;
+}
+.last-calls-row{display:flex;justify-content:center;gap:8px;margin:10px 0;}
+.last-call-circle{
+    width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:12px;color:#fff;background:#1976d2;
+}
+.last-call-circle:nth-child(2){background:#43a047;}
+.game-bottom-bar{
+    display:flex;gap:6px;margin-top:10px;position:sticky;bottom:70px;z-index:40;
+}
+.game-bottom-bar button{flex:1;border:0;border-radius:14px;padding:12px 6px;font-weight:900;font-size:13px;color:#fff;cursor:pointer;}
+.btn-leave{background:#c62828;}
+.btn-refresh{background:#1565c0;}
+.btn-bingo{background:linear-gradient(90deg,#ff9800,#ffb74d);color:#4a148c!important;}
+.spectator-msg{text-align:center;color:#6b1b9a;font-weight:bold;font-size:14px;padding:30px 10px;}
+
 
 .bingo-header{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;text-align:center;font-weight:900;font-size:13px;background:#78168b;color:white;border-radius:6px 6px 0 0;padding:4px 0;margin-top:5px;}
 .bingo{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;}
@@ -144,6 +170,10 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
     <span>💳 ኪስ: <span id="wallet">0</span> ብር</span>
     <button onclick="refreshWallet()" style="background:none; border:none; color:white; font-size:18px; cursor:pointer;" title="ባላንስ አድስ">🔄</button>
 </div>
+<div class="box" id="profileBox" style="padding:10px; text-align:center; font-size:13px;">
+    <b>👤 መገለጫ</b><br>
+    <span id="profileName">—</span> · <span id="profilePhone">—</span>
+</div>
 <div class="box">
 <h2 style="text-align:center;">የክፍያ መጠን ይምረጡ</h2>
 <button class="btn s10" onclick="handleStakeClick(10)">🎮 10 ብር ክፍል</button>
@@ -157,9 +187,10 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 <section id="game" class="page hide">
 <div class="stats">
 <div class="stat">Game ID<br><span id="gameId">---</span></div>
-<div class="stat">ተጫዋቾች<br><span id="playerCount">0</span></div>
-<div class="stat">ክፍል<br><span id="gameStake">0</span></div>
-<div class="stat">ጠቅላላ ሽልማት<br><span id="prizePool">0 ብር</span></div>
+<div class="stat">ሽልማት<br><span id="prizePool">0</span></div>
+<div class="stat">Players<br><span id="playerCount">0</span></div>
+<div class="stat">Stake<br><span id="gameStake">0</span></div>
+<div class="stat">Called<br><span id="callCountBadge">0</span></div>
 </div>
 
 <div id="countdown" class="count">30</div>
@@ -183,43 +214,47 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
                                 
 <!-- MAIN GAME VIEW -->
 <div id="mainGameSection" class="hide">
-    <div class="current-container">
-        <div id="currentCall" class="current">የወጣ ቁጥር: ---</div>
-        <div id="callCountBadge" style="text-align:center;font-size:13px;font-weight:bold;color:#78168b;margin:4px 0;">ጥሪ: 0 / 75</div>
-        <div class="last-calls-wrapper">
-            <span>የመጨረሻ 3 ጥሪዎች:</span>
-            <span id="lastCall1" class="last-call-badge">-</span>
-            <span id="lastCall2" class="last-call-badge">-</span>
-            <span id="lastCall3" class="last-call-badge">-</span>
-        </div>
-    </div>
-
-    <div class="game-layout" style="margin-top: 8px;">
-        <div class="box" style="margin:0; padding:8px;">
-            <h4 style="margin:0 0 4px 0; text-align:center; font-size:13px;">🎲 የወጡ ቁጥሮች</h4>
+    <div class="game-layout">
+        <!-- LEFT: 1-75 board -->
+        <div class="box" style="margin:0; padding:6px;">
             <div class="bingo-header" style="margin-top:0;">
-                <div>B</div><div>I</div><div>N</div><div>G</div><div>O</div>
+                <div style="background:#f9a825;border-radius:4px;">B</div>
+                <div style="background:#43a047;border-radius:4px;">I</div>
+                <div style="background:#1e88e5;border-radius:4px;">N</div>
+                <div style="background:#e53935;border-radius:4px;">G</div>
+                <div style="background:#8e24aa;border-radius:4px;">O</div>
             </div>
             <div id="calledNumbers" class="numbers-container"></div>
         </div>
 
+        <!-- RIGHT: call + controls + cards -->
         <div>
-            <div style="display: flex; gap: 4px; margin-bottom: 6px;">
-                <button id="voiceButton" class="btn voice" onclick="toggleVoice()" style="margin:0; padding:8px; font-size:11px; background:#079b20;">🔊 ድምጽ: አብራ</button>
-                <button id="autoModeButton" class="btn" onclick="toggleAutoMode()" style="margin:0; padding:8px; font-size:11px; background:#007bff;">⚡ ራሱ ይጥላት</button>
-                <button class="btn" style="margin:0; padding:8px; font-size:11px; background:#b51a1a;" onclick="refreshGameInside()">🔄 አድስ</button>
+            <div class="afro-call-box">
+                <div class="afro-call-label">Current Call</div>
+                <div id="currentCall" class="afro-call-num">—</div>
             </div>
-
+            <div class="last-calls-row">
+                <span id="lastCall1" class="last-call-circle">-</span>
+                <span id="lastCall2" class="last-call-circle">-</span>
+                <span id="lastCall3" class="last-call-circle">-</span>
+            </div>
+            <div style="display:flex;gap:6px;margin:6px 0;justify-content:center;">
+                <button id="voiceButton" class="btn voice" onclick="toggleVoice()" style="margin:0;padding:8px 10px;font-size:11px;width:auto;background:#079b20;">🔊 Sound</button>
+                <button id="autoModeButton" class="btn" onclick="toggleAutoMode()" style="margin:0;padding:8px 10px;font-size:11px;width:auto;background:#007bff;">⚡ Auto</button>
+            </div>
             <div class="zoom-controls">
-                <button type="button" onclick="zoomCards(-0.1)" title="አሳንስ">➖</button>
-                <button type="button" onclick="zoomCards(0.1)" title="አጉላ">➕</button>
-                <button type="button" onclick="zoomCards(0)" title="መደበኛ" style="font-size:12px;">100%</button>
+                <button type="button" onclick="zoomCards(-0.1)">➖</button>
+                <button type="button" onclick="zoomCards(0.1)">➕</button>
+                <button type="button" onclick="zoomCards(0)" style="font-size:12px;">100%</button>
             </div>
             <div class="cards-scroll-container" id="bingoCardsContainer"></div>
-
-            <button id="bingoButton" class="btn voice" style="margin-top:8px; padding:12px; background:#ff9800; font-size:16px;" onclick="claimBingo()">🎉 ቢንጎ (BINGO!)</button>
-            <p id="autoBingoHint" style="display:none; text-align:center; font-size:12px; color:#007bff; margin-top:6px;">⚡ Auto — መስመር ሲሞላ በራሱ BINGO ይጠይቃል (ቁልፍም ይቆያል)</p>
         </div>
+    </div>
+
+    <div class="game-bottom-bar">
+        <button type="button" class="btn-leave" onclick="showPage('home')">← Leave</button>
+        <button type="button" class="btn-refresh" onclick="refreshGameInside()">🔄 Refresh</button>
+        <button type="button" class="btn-bingo" id="bingoButton" onclick="claimBingo()">Bingo!</button>
     </div>
 </div>
 
@@ -339,12 +374,20 @@ async function login(){
         player = data.player;
         if (player && player.telegram_id) socket.emit('register_telegram_user', player.telegram_id);
         document.getElementById("wallet").textContent = (player && player.balance !== undefined) ? player.balance : 0;
+        updateProfileUI(player);
         
         document.getElementById("loginStatus").textContent = "✅ ገብተዋል";
         setTimeout(() => showPage("home"), 700);
     }catch(error){
         document.getElementById("loginStatus").textContent = "❌ " + error.message;
     }
+}
+
+function updateProfileUI(p) {
+    const nameEl = document.getElementById("profileName");
+    const phoneEl = document.getElementById("profilePhone");
+    if(nameEl) nameEl.textContent = (p && p.name) ? p.name : "—";
+    if(phoneEl) phoneEl.textContent = (p && p.phone) ? p.phone : "—";
 }
 
 function fetchLatestBalance() {
@@ -359,6 +402,7 @@ function fetchLatestBalance() {
         if(data.ok && data.player) {
             player = data.player;
             document.getElementById("wallet").textContent = player.balance !== undefined ? player.balance : 0;
+            updateProfileUI(player);
         }
     }).catch(err => console.log("Balance fetch error:", err));
 }
@@ -399,7 +443,7 @@ function refreshGameInside(){
     lastCallsArray = [];
     updateLastCallsUI();
     updateCalledNumbersUI([]);
-    document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ታድሷል";
+    document.getElementById("currentCall").textContent = "—";
     socket.emit('join_room', currentStake);
 }
 
@@ -585,7 +629,7 @@ socket.on('init_state', (data) => {
             else if (lastNum >= 31 && lastNum <= 45) letter = 'N';
             else if (lastNum >= 46 && lastNum <= 60) letter = 'G';
             else if (lastNum >= 61 && lastNum <= 75) letter = 'O';
-            document.getElementById("currentCall").textContent = `የወጣ ቁጥር: ${letter}${lastNum}`;
+            document.getElementById("currentCall").textContent = `${letter}${lastNum}`;
         }
     }
 });
@@ -617,9 +661,7 @@ socket.on('game_started', (data) => {
     cardsZoom = 1;
     const cardsBox = document.getElementById("bingoCardsContainer");
     if(cardsBox) { cardsBox.style.transform = "scale(1)"; cardsBox.style.marginBottom = "0"; }
-    const hint = document.getElementById("autoBingoHint");
-    if(hint) hint.style.display = isAutoMarkEnabled ? "block" : "none";
-    // BINGO ቁልፍ ሁልጊዜ ይታያል
+        // BINGO ቁልፍ ሁልጊዜ ይታያል
     const bingoBtn = document.getElementById("bingoButton");
     if(bingoBtn) bingoBtn.style.display = "block";
 
@@ -639,25 +681,25 @@ socket.on('game_started', (data) => {
         lastCallsArray = [];
         updateLastCallsUI();
         updateCalledNumbersUI([]);
-        document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ---";
+        document.getElementById("currentCall").textContent = "—";
         const callBadge = document.getElementById("callCountBadge");
-        if(callBadge) callBadge.textContent = "ጥሪ: 0 / 75";
+        if(callBadge) callBadge.textContent = "0";
     } else if (data.drawnNumbers && data.drawnNumbers.length) {
         const n = data.drawnNumbers.length;
         const callBadge = document.getElementById("callCountBadge");
-        if(callBadge) callBadge.textContent = `ጥሪ: ${n} / 75  (${n}ኛ ጥሪ)`;
+        if(callBadge) callBadge.textContent = String(n);
     }
 });
 
 socket.on('number_drawn', (data) => {
-    document.getElementById("currentCall").textContent = `የወጣ ቁጥር: ${data.displayNumber}`;
+    document.getElementById("currentCall").textContent = data.displayNumber || data.number || "—";
     // drawn ቁጥሮችን number አድርግ (type mismatch ለማስቀረት)
     currentDrawnNumbers = (data.drawnNumbers || []).map(n => Number(n));
 
-    // የጥሪ ብዛት (ስንተኛ ጥሪ)
+    // የጥሪ ቁጥር ብቻ (1, 2, 23…)
     const callN = currentDrawnNumbers.length;
     const callBadge = document.getElementById("callCountBadge");
-    if(callBadge) callBadge.textContent = `ጥሪ: ${callN} / 75  (${callN}ኛ ጥሪ)`;
+    if(callBadge) callBadge.textContent = String(callN);
     
     lastCallsArray.unshift(data.displayNumber);
     if(lastCallsArray.length > 3) lastCallsArray.pop();
@@ -829,13 +871,13 @@ socket.on('game_ended', (data) => {
             cell.className = "winning-card-cell";
             
             if(num === "FREE") cell.classList.add("free");
-            else if(drawnAtWin.includes(num)) cell.classList.add("mark");
+            else if(drawnAtWin.map(Number).includes(Number(num))) cell.classList.add("mark");
 
-            // ያሸነፈበት መስመር / 4 corners
+            // ያሸነፈበት መስመር / diagonal / 4 corners — ሰማያዊ
             if(winCells.includes(index)) cell.classList.add("win-line");
 
-            // የመጨረሻው የድል ቁጥር ብልጭ ድርግም
-            if(lastWinNum !== null && num === lastWinNum) cell.classList.add("blink-win");
+            // የመጨረሻው የድል ቁጥር — ብርቱ ቢጫ + ብልጭ ድርግም
+            if(lastWinNum !== null && Number(num) === Number(lastWinNum)) cell.classList.add("blink-win");
 
             gridDiv.appendChild(cell);
         });
@@ -853,9 +895,7 @@ socket.on('game_ended', (data) => {
     currentDrawnNumbers = [];
     lastCallsArray = [];
     updateLastCallsUI();
-    document.getElementById("currentCall").textContent = lastWinNum
-        ? `🏆 የድል ቁጥር: ${lastWinNum}`
-        : "የወጣ ቁጥር: ---";
+    document.getElementById("currentCall").textContent = lastWinNum ? String(lastWinNum) : "—";
 
     // Auto / Manual ሁለቱም 10 ሰከንድ ከዚያ በራሱ ይዘጋል
     let timeLeft = 10;
@@ -897,7 +937,7 @@ socket.on('reset_player_card', () => {
     lastCallsArray = [];
     updateLastCallsUI();
     updateCalledNumbersUI([]);
-    document.getElementById("currentCall").textContent = "የወጣ ቁጥር: ---";
+    document.getElementById("currentCall").textContent = "—";
     
     selectedCards = [];
     takenCards = [];
@@ -926,13 +966,11 @@ function toggleVoice(){
 function toggleAutoMode(){
     isAutoMarkEnabled = !isAutoMarkEnabled;
     const btn = document.getElementById("autoModeButton");
-    const hint = document.getElementById("autoBingoHint");
     if(btn) {
         btn.textContent = isAutoMarkEnabled ? "⚡ ራሱ ይጥላት" : "✋ በእጅ (Manual)";
         btn.style.background = isAutoMarkEnabled ? "#007bff" : "#6c757d";
     }
     // Auto ሲሆንም BINGO ቁልፍ ይቆያል (አይጠፋም)
-    if(hint) hint.style.display = isAutoMarkEnabled ? "block" : "none";
 }
 
 let cardsZoom = 1;
