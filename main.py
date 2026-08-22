@@ -1,4 +1,4 @@
- # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # ===============================
 # LIYU BINGO PRO - FULLY FIXED CODE
 # ===============================
@@ -27,15 +27,12 @@ from telegram.ext import (
 # -------------------------------------------------------------
 # CONFIGURATION - እዚህ የራስህን እሴቶች አስገባ
 # -------------------------------------------------------------
-# ከ .env ወይም ከዚህ በታች በቀጥታ መሙላት ትችላለህ
-
 BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ
 MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ MongoDB URLህን እዚህ ጻፍ
-ADMIN_ID = "2134795751"         # ← የ Telegram IDህን እዚህ ጻፍ
+ADMIN_ID = "2134795751"           # ← የ Telegram IDህን እዚህ ጻፍ
 
-WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"  # ← የ Render URLህን ቀይር
+WEB_APP_URL = "https://liyu-bingo-2jg6.onrender.com"
 
-# .env ካለህ ከላይ ያሉትን ባዶ ትተህ ይህን አትሰርዝ
 try:
     load_dotenv()
     if os.getenv("BOT_TOKEN"):
@@ -44,27 +41,26 @@ try:
         MONGO_URI = os.getenv("MONGO_URI")
     if os.getenv("ADMIN_ID"):
         ADMIN_ID = os.getenv("ADMIN_ID")
-except:
+except Exception:
     pass
 
-TELEBIRR_ACCOUNT = "0902715499"  
-CBE_ACCOUNT = "1000483349452"    
-ACCOUNT_NAME = "ABRHAM MULU"   
+TELEBIRR_ACCOUNT = "0902715499"
+CBE_ACCOUNT = "1000483349452"
+ACCOUNT_NAME = "ABRHAM MULU"
 
-CARD_PRICE = "10, 20, 50"     
-REFERRAL_BONUS = 2.0            
-WELCOME_BONUS = 10.0             
-MIN_WITHDRAW = 50.0             
+CARD_PRICE = "10, 20, 50"
+REFERRAL_BONUS = 2.0
+WELCOME_BONUS = 10.0
+MIN_WITHDRAW = 50.0
 
 BOT_NAME = "Liyu Bingo"
 CURRENCY = "Birr"
 
-# 🟢 Support Group / Channel link (የራስህን ቀይር)
-SUPPORT_GROUP_URL = "https://t.me/abmulu11"   # ← የ Support Group/Channel linkህን እዚህ ጻፍ
-SUPPORT_PERSON_URL = "https://t.me/abmulu11"  # ← የ Admin/Support chat link
+SUPPORT_GROUP_URL = "https://t.me/abmulu11"
+SUPPORT_PERSON_URL = "https://t.me/abmulu11"
 
 # -------------------------------------------------------------
-# MONGODB CONNECTION SETUP (URI ከተሞላ በኋላ ብቻ ይገናኛል)
+# MONGODB CONNECTION SETUP
 # -------------------------------------------------------------
 client = None
 db = None
@@ -75,11 +71,11 @@ def init_db():
     if client is not None:
         return
     if not MONGO_URI or str(MONGO_URI).startswith("YOUR_"):
-        raise RuntimeError("❌ MONGO_URI አልተሞላም! main.py ከላይ ሙላ።")
+        raise RuntimeError("MONGO_URI not set! Fill main.py above.")
     client = pymongo.MongoClient(MONGO_URI)
     db = client['liyu_bingo']
     players_col = db['users']
-    print("✅ MongoDB connected (liyu_bingo)")
+    print("MongoDB connected (liyu_bingo)")
 
 def get_used_txns_col():
     init_db()
@@ -101,33 +97,28 @@ def mark_txn_used(txn_id, telegram_id, amount):
     })
 
 def extract_txn_id(text):
-    """ከመልእክት Transaction ID ያውጣል (ቁጥር ካልሆነው ክፍል)"""
-    # ምሳሌ: "100 TXN123456" ወይም "100 251234567890"
+    """From message like: 100 TXN123456"""
     parts = text.strip().split()
     for p in parts:
-        # የመጀመሪያው ቁጥር amount ነው — ቀሪው txn ሊሆን ይችላል
         if re.match(r'^[A-Za-z0-9\-]{5,}$', p) and not re.match(r'^\d+(\.\d+)?$', p):
             return p.upper()
-    # ሁሉም ቁጥር ከሆነ ሁለተኛውን እንደ txn ውሰድ
     nums = re.findall(r'\b\d{6,}\b', text)
     if len(nums) >= 2:
-        return nums[1]  # ሁለተኛው ረጅም ቁጥር
+        return nums[1]
     if len(nums) == 1 and len(nums[0]) >= 8:
         return nums[0]
     return None
 
 # -------------------------------------------------------------
-# KEYBOARD SETUP (ቋሚ እና ኢንላይን በተኖች)
+# KEYBOARD SETUP
 # -------------------------------------------------------------
 def get_contact_keyboard():
-    """ስልክ ቁጥር ለመጠየቂያ የሚሆን አዝራር"""
     keyboard = [
         [KeyboardButton("📱 ስልክ ቁጥር ያጋሩ", request_contact=True)]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 def get_persistent_keyboard():
-    """ሁልጊዜ ታች በቋሚነት የሚቀመጡ በተኖች (Reply Keyboard)"""
     keyboard = [
         [KeyboardButton("💳 ብር መሙያ"), KeyboardButton("💸 ብር ማውጫ")],
         [KeyboardButton("🎮 ጨዋታ ጀምር"), KeyboardButton("📊 መገለጫ / ቀሪ ሂሳብ")],
@@ -136,7 +127,6 @@ def get_persistent_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_inline_menu():
-    """በመልእክቱ ላይ የሚወጡ ተጨማሪ በተኖች (Inline Keyboard)"""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎁 ቦነስ እና መጋበዣ", callback_data="referral")],
         [
@@ -164,14 +154,13 @@ def add_player(telegram_id, name, username, referred_by=0, phone=""):
             "referred_by": referred_by
         }
         players_col.insert_one(new_player)
-        
         if referred_by != 0 and referred_by != telegram_id:
             players_col.update_one(
                 {"telegram_id": str(referred_by)},
                 {"$inc": {"balance": float(REFERRAL_BONUS)}}
             )
-        return True # አዲስ ተመዝጋቢ
-    return False # አስቀድሞ የተመዘገበ
+        return True
+    return False
 
 def update_phone(telegram_id, phone):
     init_db()
@@ -186,24 +175,21 @@ def get_player(telegram_id):
     return players_col.find_one({"telegram_id": str(telegram_id)})
 
 def extract_first_number(text):
-    """ከጽሑፍ ውስጥ የመጀመሪያውን የብር ቁጥር ለይቶ ማውጫ"""
     match = re.search(r'\b\d+(\.\d+)?\b', text)
     if match:
         return float(match.group(0))
     return 0.0
 
 # -------------------------------------------------------------
-# START COMMAND (ስልክ ቁጥር መጠየቂያ)
+# START COMMAND
 # -------------------------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     player = get_player(user.id)
-    
-    # ሪፌራል ሊንኩን መያዝ
+
     if context.args and context.args[0].isdigit():
         context.user_data['referred_by'] = int(context.args[0])
 
-    # ተጫዋቹ አስቀድሞ ስልክ አጋርቶ የተመዘገበ ከሆነ ቀጥታ ዋናውን ሜኑ ማሳየት
     if player and player.get("phone"):
         await update.message.reply_text(
             f"👋 እንኳን ደህና መጡ <b>{user.first_name}</b>!\n\n👇 ከታች ያሉትን በተኖች በመጠቀም ይጫወቱ፡",
@@ -212,7 +198,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ተጫዋቹ አዲስ ከሆነ ስልክ እንዲያጋራ መጠየቅ
     await update.message.reply_text(
         f"""
 🎰 <b>ወደ {BOT_NAME} እንኳን ደህና መጡ!</b>
@@ -226,7 +211,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # -------------------------------------------------------------
-# CONTACT HANDLER (ስልክ ቁጥር ሲላክ ምዝገባ ማጠናቀቂያ)
+# CONTACT HANDLER
 # -------------------------------------------------------------
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -235,7 +220,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     referred_by = context.user_data.get('referred_by', 0)
     is_new = add_player(user.id, user.first_name, user.username, referred_by, phone_number)
-    
+
     if not is_new:
         update_phone(user.id, phone_number)
 
@@ -255,7 +240,6 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=get_persistent_keyboard()
     )
-
     await update.message.reply_text("🎮 ጨዋታውን ለመክፈት፡", reply_markup=inline_game_btn)
 
 # -------------------------------------------------------------
@@ -267,7 +251,6 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     action = context.user_data.get('action')
     player = get_player(user.id)
 
-    # ተጫዋቹ ገና ስልክ ቁጥር ካላጋራ እንዲያጋራ ማሳሰብ
     if not player or not player.get("phone"):
         await update.message.reply_text(
             "⚠️ ለመጠቀም በመጀመሪያ ስልክ ቁጥርዎን ማጋራት አለብዎት። /start ብለው ይጫኑ።",
@@ -275,7 +258,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
-    # 1. ብር መሙያ
+    # 1. Deposit
     if "ብር መሙያ" in text or "Deposit" in text:
         context.user_data['action'] = 'waiting_deposit'
         await update.message.reply_text(
@@ -289,14 +272,14 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 👤 <b>ስም:</b> {ACCOUNT_NAME}
 
 ከከፈሉ በኋላ፡
-<b>የላኩትን የብር መጠን እና የክፍያ ቁጥር ይጻፉልን!</b>
-<i>(ምሳሌ፡ 100 TXN123456)</i>
+<b>የብር መጠን + Transaction ID</b> አብረው ይላኩ።
+<i>ምሳሌ፡ 100 TXN123456</i>
 """,
             parse_mode="HTML",
             reply_markup=get_persistent_keyboard()
         )
 
-    # 2. ብር ማውጫ
+    # 2. Withdraw
     elif "ብር ማውጫ" in text or "Withdraw" in text:
         bal = player.get("balance", 0.0) if player else 0.0
         if bal < MIN_WITHDRAW:
@@ -322,7 +305,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=get_persistent_keyboard()
         )
 
-    # 3. ጨዋታ ጀምር
+    # 3. Play
     elif "ጨዋታ ጀምር" in text or "Play Game" in text:
         context.user_data['action'] = None
         inline_game_btn = InlineKeyboardMarkup([
@@ -330,7 +313,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         ])
         await update.message.reply_text("🎮 ጨዋታውን ለመጀመር ከታች ያለውን ቁልፍ ይጫኑ፡", reply_markup=inline_game_btn)
 
-    # 4. መገለጫ
+    # 4. Profile
     elif "መገለጫ" in text or "ቀሪ ሂሳብ" in text or "Profile" in text or "Balance" in text:
         context.user_data['action'] = None
         name = player.get("name", "ተጫዋች") if player else "ተጫዋች"
@@ -351,7 +334,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=get_persistent_keyboard()
         )
 
-    # 4b. የመጋበዣ ሊንክ
+    # 4b. Referral
     elif "መጋበዣ" in text or "Referral" in text:
         context.user_data['action'] = None
         bot_username = (await context.bot.get_me()).username
@@ -372,11 +355,11 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=get_persistent_keyboard()
         )
 
-    # 4c. የድጋፍ ቡድን
+    # 4c. Support
     elif "ድጋፍ" in text or "Support" in text:
         context.user_data['action'] = None
         await update.message.reply_text(
-            f"""
+            """
 👥 <b>የድጋፍ ቡድን</b>
 
 ጥያቄ፣ ችግር ወይም እርዳታ ከፈለጉ ከታች ያሉትን ይጠቀሙ፡
@@ -388,8 +371,8 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
         )
 
-    # 5. የ Deposit መረጃ መቀበያ
-        elif action == 'waiting_deposit':
+    # 5. Deposit data — example: 100 TXN123456
+    elif action == 'waiting_deposit':
         context.user_data['action'] = None
         parsed_amount = extract_first_number(text)
         txn_id = extract_txn_id(text)
@@ -418,7 +401,6 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        # ጊዜያዊ ማስቀመጫ (Admin ሲያጸድቅ ቋሚ ይሆናል)
         context.user_data['pending_txn'] = txn_id
         context.user_data['pending_amount'] = parsed_amount
 
@@ -448,29 +430,38 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=get_persistent_keyboard()
         )
 
-    # 6. የ Withdraw መረጃ መቀበያ
+    # 6. Withdraw data
     elif action == 'waiting_withdraw':
         parsed_amount = extract_first_number(text)
         current_bal = player.get("balance", 0.0) if player else 0.0
 
         if parsed_amount <= 0 or parsed_amount > current_bal or parsed_amount < MIN_WITHDRAW:
-            await update.message.reply_text(f"❌ የተሳሳተ ወይም በቂ ያልሆነ የብር መጠን። (ባላንስ: {current_bal} Birr)", reply_markup=get_persistent_keyboard())
+            await update.message.reply_text(
+                f"❌ የተሳሳተ ወይም በቂ ያልሆነ የብር መጠን። (ባላንስ: {current_bal} ብር)",
+                reply_markup=get_persistent_keyboard()
+            )
             return
 
         context.user_data['action'] = None
         admin_keyboard = [
             [
-                InlineKeyboardButton("✅ ከፈልኩ (Approve)", callback_data=f"app_wd_{user.id}_{parsed_amount}"),
-                InlineKeyboardButton("❌ ሰርዝ (Reject)", callback_data=f"rej_wd_{user.id}")
+                InlineKeyboardButton("✅ ከፈልኩ", callback_data=f"app_wd_{user.id}_{parsed_amount}"),
+                InlineKeyboardButton("❌ ሰርዝ", callback_data=f"rej_wd_{user.id}")
             ]
         ]
         await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=f"📤 <b>አዲስ Withdraw ጥያቄ!</b>\n\n👤 <b>ተጫዋች:</b> {user.first_name} (@{user.username})\n🆔 <b>ID:</b> <code>{user.id}</code>\n📝 <b>መረጃ:</b> {text}\n💵 <b>የሚወጣው መጠን:</b> {parsed_amount} Birr",
+            text=(
+                f"📤 <b>አዲስ ብር ማውጫ ጥያቄ!</b>\n\n"
+                f"👤 <b>ተጫዋች:</b> {user.first_name} (@{user.username})\n"
+                f"🆔 <b>ID:</b> <code>{user.id}</code>\n"
+                f"📝 <b>መረጃ:</b> {text}\n"
+                f"💵 <b>የሚወጣው መጠን:</b> {parsed_amount} ብር"
+            ),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(admin_keyboard)
         )
-        await update.message.reply_text("✅ የ Withdraw ጥያቄዎ ተልኳል!", reply_markup=get_persistent_keyboard())
+        await update.message.reply_text("✅ የ ብር ማውጫ ጥያቄዎ ተልኳል!", reply_markup=get_persistent_keyboard())
 
 # -------------------------------------------------------------
 # CALLBACK QUERY HANDLER
@@ -519,7 +510,6 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     init_db()
 
-    # 🟢 ሁለት ጊዜ Approve/Reject መከላከያ
     old_text = query.message.text or ""
     if "ተፅድቋል" in old_text or "ተፈፅሟል" in old_text or "ውድቅ ተደረገ" in old_text:
         await query.answer("⚠️ ይህ ጥያቄ አስቀድሞ ተከናውኗል!", show_alert=True)
@@ -532,7 +522,7 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sub_type = data[1]
     player_id = int(data[2])
 
-        if action_type == "app" and sub_type == "dep":
+    if action_type == "app" and sub_type == "dep":
         amount = float(data[3]) if len(data) > 3 else 0.0
         txn_id = data[4] if len(data) > 4 else None
 
@@ -556,25 +546,44 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=player_id,
             text=f"🎉 የ ብር መሙያ ጥያቄዎ ተፅድቆ {amount} ብር ተደምሯል።",
             reply_markup=get_persistent_keyboard()
-        )s
+        )
 
     elif action_type == "app" and sub_type == "wd":
         amount = float(data[3]) if len(data) > 3 else 0.0
         update_balance(player_id, -amount)
-        players_col.update_one({"telegram_id": str(player_id)}, {"$push": {"history": {"type": "Withdraw", "amount": amount, "status": "Completed"}}})
-        await query.edit_message_text(f"{old_text}\n\n✅ <b>ክፍያው ተፈፅሟል! ({amount} ብር ተቀንሷል)</b>", parse_mode="HTML")
-        await context.bot.send_message(chat_id=player_id, text=f"🎉 የ ብር ማውጫ ጥያቄዎ ተፈፅሟል። {amount} ብር ተቀንሷል።", reply_markup=get_persistent_keyboard())
+        players_col.update_one(
+            {"telegram_id": str(player_id)},
+            {"$push": {"history": {"type": "Withdraw", "amount": amount, "status": "Completed"}}}
+        )
+        await query.edit_message_text(
+            f"{old_text}\n\n✅ <b>ክፍያው ተፈፅሟል! ({amount} ብር ተቀንሷል)</b>",
+            parse_mode="HTML"
+        )
+        await context.bot.send_message(
+            chat_id=player_id,
+            text=f"🎉 የ ብር ማውጫ ጥያቄዎ ተፈፅሟል። {amount} ብር ተቀንሷል።",
+            reply_markup=get_persistent_keyboard()
+        )
 
     elif action_type == "rej":
-        await query.edit_message_text(f"{old_text}\n\n❌ <b>ጥያቄው ውድቅ ተደረገ!</b>", parse_mode="HTML")
-        await context.bot.send_message(chat_id=player_id, text="❌ ጥያቄዎ ውድቅ ተደረገ።", reply_markup=get_persistent_keyboard())
+        await query.edit_message_text(
+            f"{old_text}\n\n❌ <b>ጥያቄው ውድቅ ተደረገ!</b>",
+            parse_mode="HTML"
+        )
+        await context.bot.send_message(
+            chat_id=player_id,
+            text="❌ ጥያቄዎ ውድቅ ተደረገ።",
+            reply_markup=get_persistent_keyboard()
+        )
 
 # -------------------------------------------------------------
 # MAIN APP LAUNCH
 # -------------------------------------------------------------
 if __name__ == "__main__":
-    if (not BOT_TOKEN or str(BOT_TOKEN).startswith("YOUR_")) or (not MONGO_URI or str(MONGO_URI).startswith("YOUR_")) or (not ADMIN_ID or str(ADMIN_ID).startswith("YOUR_")):
-        raise RuntimeError("❌ እባክዎ BOT_TOKEN, MONGO_URI እና ADMIN_ID ን በ main.py ውስጥ (ከላይ) ይሙሉ!")
+    if (not BOT_TOKEN or str(BOT_TOKEN).startswith("YOUR_")) or \
+       (not MONGO_URI or str(MONGO_URI).startswith("YOUR_")) or \
+       (not ADMIN_ID or str(ADMIN_ID).startswith("YOUR_")):
+        raise RuntimeError("Please fill BOT_TOKEN, MONGO_URI and ADMIN_ID in main.py!")
     init_db()
     app = (
         Application.builder()
@@ -587,10 +596,10 @@ if __name__ == "__main__":
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.CONTACT, handle_contact)) # ስልክ ቁጥር መቀበያ
+    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(CallbackQueryHandler(admin_approval, pattern="^(app_|rej_)"))
     app.add_handler(CallbackQueryHandler(buttons))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
 
-    print("✅ Bot is running with contact registration flow...")
+    print("Bot is running with contact registration flow...")
     app.run_polling(bootstrap_retries=-1, poll_interval=1.0)
