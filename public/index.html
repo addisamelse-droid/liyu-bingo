@@ -215,6 +215,98 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 #mainGameSection .box{overflow:visible;}
 .game-layout{align-items:start;}
 
+
+/* compact game + tabs — less empty space */
+.page{padding:8px 8px 70px!important;}
+.stats{gap:3px!important;margin-bottom:4px!important;}
+.stat{padding:5px 2px!important;font-size:9px!important;border-radius:8px!important;}
+.stat span{font-size:12px!important;margin-top:1px!important;}
+.count{font-size:22px!important;margin:2px!important;}
+.afro-top-call{gap:6px!important;margin:4px 0 6px!important;flex-wrap:nowrap!important;}
+.afro-call-box{padding:8px!important;border-radius:14px!important;}
+.afro-call-label{font-size:11px!important;}
+.afro-call-num{font-size:18px!important;padding:6px 12px!important;min-width:44px!important;margin-top:4px!important;}
+.last-call-circle{width:36px!important;height:36px!important;font-size:11px!important;}
+.game-layout{gap:6px!important;margin-top:4px!important;}
+.numbers-col span{
+  font-size:clamp(8px,2.4vw,11px)!important;
+  padding:2px 0!important;
+  line-height:1.3!important;
+}
+.cards-2col{max-height:28vh!important;gap:4px!important;}
+.game-bottom-bar{
+  position:relative!important;
+  bottom:auto!important;
+  margin-top:8px!important;
+  gap:6px!important;
+}
+.game-bottom-bar button{padding:10px 6px!important;font-size:12px!important;border-radius:12px!important;}
+.tabs{padding:4px 4px 6px!important;gap:2px!important;background:#eadcf0!important;}
+.tabs button{padding:6px 2px!important;font-size:11px!important;line-height:1.2!important;}
+.btn-bingo{padding:10px!important;font-size:14px!important;margin-top:6px!important;}
+#mainGameSection .box{padding:4px!important;margin:0!important;}
+
+
+/* ===== Afro Bingo play layout ===== */
+.afro-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:6px;}
+.afro-stat{background:#efe6f7;border-radius:12px;padding:6px 4px;text-align:center;}
+.afro-stat .lbl{display:block;font-size:9px;font-weight:800;color:#7b1fa2;}
+.afro-stat span:last-child{display:block;font-size:12px;font-weight:900;color:#4a148c;margin-top:2px;}
+.afro-play{display:grid;grid-template-columns:1.15fr 1fr;gap:6px;align-items:start;}
+.afro-board{background:#e8def0;border-radius:14px;padding:6px;}
+.afro-bingo-letters{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:4px;}
+.afro-bingo-letters .bl{text-align:center;font-weight:900;color:#fff;border-radius:6px;padding:4px 0;font-size:13px;}
+.afro-bingo-letters .b{background:#f9a825;}
+.afro-bingo-letters .i{background:#43a047;}
+.afro-bingo-letters .n{background:#1e88e5;}
+.afro-bingo-letters .g{background:#e53935;}
+.afro-bingo-letters .o{background:#8e24aa;}
+.afro-board .numbers-container{gap:2px!important;}
+.afro-board .numbers-col span{
+  background:#d7cce3!important;border-radius:8px!important;
+  font-size:clamp(9px,2.5vw,12px)!important;font-weight:700!important;
+  padding:3px 0!important;line-height:1.35!important;min-height:0!important;
+  color:#5e35b1!important;
+}
+.afro-board .numbers-col span.called{background:#ff9800!important;color:#fff!important;}
+.afro-board .numbers-col span.called-latest{background:#43a047!important;color:#fff!important;box-shadow:none!important;transform:none!important;}
+.afro-right{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.afro-current-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(90deg,#6a1b9a,#8e24aa);border-radius:22px;padding:8px 10px 8px 14px;
+}
+.afro-current-label{color:#fff;font-weight:800;font-size:13px;}
+.afro-current-pill{
+  background:#ff9800;color:#fff;font-weight:900;font-size:16px;
+  min-width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 6px #0003;
+}
+.last-calls-row{display:flex;justify-content:center;gap:8px;padding:4px;}
+.last-call-circle{
+  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:900;font-size:11px;color:#fff;background:#1976d2;
+}
+#lastCall2.last-call-circle{background:#43a047;}
+#lastCall3.last-call-circle{background:#1976d2;}
+.afro-toggles{display:flex;gap:8px;align-items:center;padding:0 4px;}
+.afro-toggles button{
+  border:0;background:#efe6f7;color:#6a1b9a;border-radius:16px;padding:6px 12px;
+  font-weight:800;font-size:11px;cursor:pointer;
+}
+.cards-2col{max-height:30vh!important;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.btn-bingo-inline{
+  width:100%;border:0;border-radius:18px;padding:12px;font-weight:900;font-size:15px;
+  color:#fff;background:linear-gradient(90deg,#ff9800,#ffb74d);cursor:pointer;margin-top:4px;
+}
+.afro-bottom{display:flex;gap:6px;margin-top:8px;}
+.afro-bottom .btn-leave,.afro-bottom .btn-refresh{flex:1;border:0;border-radius:14px;padding:11px 6px;font-weight:900;font-size:12px;color:#fff;cursor:pointer;}
+.afro-bottom .btn-leave{background:#c62828;}
+.afro-bottom .btn-refresh{background:#1565c0;}
+@media (max-width:360px){
+  .afro-play{grid-template-columns:1fr 1fr;gap:4px;}
+  .afro-current-pill{min-width:40px;height:40px;font-size:13px;}
+}
+
 </style>
 </head>
 <body>
@@ -252,12 +344,12 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 
 <!-- ================= GAME ================= -->
 <section id="game" class="page hide">
-<div class="stats">
-<div class="stat">Game ID<br><span id="gameId">---</span></div>
-<div class="stat">ሽልማት<br><span id="prizePool">0</span></div>
-<div class="stat">Players<br><span id="playerCount">0</span></div>
-<div class="stat">Stake<br><span id="gameStake">0</span></div>
-<div class="stat">Called<br><span id="callCountBadge">0</span></div>
+<div class="afro-stats">
+  <div class="afro-stat"><span class="lbl">Game ID</span><span id="gameId">---</span></div>
+  <div class="afro-stat"><span class="lbl">ሽልማት</span><span id="prizePool">0</span></div>
+  <div class="afro-stat"><span class="lbl">Players</span><span id="playerCount">0</span></div>
+  <div class="afro-stat"><span class="lbl">Stake</span><span id="gameStake">0</span></div>
+  <div class="afro-stat"><span class="lbl">Called</span><span id="callCountBadge">0</span></div>
 </div>
 
 <div id="countdown" class="count">30</div>
@@ -278,50 +370,42 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
     <p style="font-size: 13px; margin-top: 5px;">የተመረጡ ካርዶችዎ (ከ3 ያልበለጠ): <span id="selectedCardsText" style="font-weight: bold; color: #78168b;">ምንም የለም</span></p>
     <div id="selectedCardsPreview" style="margin-top:12px; max-height:420px; overflow-y:auto;"></div>
 </div>
-                                
-<!-- MAIN GAME VIEW -->
+
+<!-- MAIN GAME VIEW — Afro Bingo layout -->
 <div id="mainGameSection" class="hide">
-    <!-- TOP: Current Call + Last 3 -->
-    <div class="afro-top-call">
-        <div class="afro-call-box" style="flex:1;">
-            <div class="afro-call-label">Current Call</div>
-            <div id="currentCall" class="afro-call-num">—</div>
-        </div>
-        <div class="last-calls-row" style="margin:0;">
-            <span id="lastCall1" class="last-call-circle">-</span>
-            <span id="lastCall2" class="last-call-circle">-</span>
-            <span id="lastCall3" class="last-call-circle">-</span>
-        </div>
-        <div style="display:flex;gap:4px;flex-direction:column;">
-            <button id="voiceButton" class="btn voice" onclick="toggleVoice()" style="margin:0;padding:6px 8px;font-size:10px;width:auto;background:#079b20;">🔊</button>
-            <button id="autoModeButton" class="btn" onclick="toggleAutoMode()" style="margin:0;padding:6px 8px;font-size:10px;width:auto;background:#007bff;">⚡</button>
-        </div>
+  <div class="afro-play">
+    <!-- LEFT: 1-75 board -->
+    <div class="afro-board">
+      <div class="afro-bingo-letters">
+        <span class="bl b">B</span><span class="bl i">I</span><span class="bl n">N</span><span class="bl g">G</span><span class="bl o">O</span>
+      </div>
+      <div id="calledNumbers" class="numbers-container"></div>
     </div>
 
-    <div class="game-layout">
-        <!-- LEFT: 1-75 -->
-        <div class="box" style="margin:0; padding:6px;">
-            <div class="bingo-header" style="margin-top:0;">
-                <div style="background:#f9a825;border-radius:4px;">B</div>
-                <div style="background:#43a047;border-radius:4px;">I</div>
-                <div style="background:#1e88e5;border-radius:4px;">N</div>
-                <div style="background:#e53935;border-radius:4px;">G</div>
-                <div style="background:#8e24aa;border-radius:4px;">O</div>
-            </div>
-            <div id="calledNumbers" class="numbers-container"></div>
-        </div>
-
-        <!-- RIGHT: player cards (2-col) + Bingo near cards -->
-        <div>
-<div class="cards-scroll-container cards-2col" id="bingoCardsContainer"></div>
-            <button type="button" class="btn-bingo" id="bingoButton" onclick="claimBingo()" style="width:100%;margin-top:8px;border:0;border-radius:14px;padding:14px;font-weight:900;font-size:16px;">🎉 Bingo!</button>
-        </div>
+    <!-- RIGHT: call + last3 + sound/auto + cards + bingo -->
+    <div class="afro-right">
+      <div class="afro-current-bar">
+        <span class="afro-current-label">Current Call</span>
+        <span id="currentCall" class="afro-current-pill">—</span>
+      </div>
+      <div class="last-calls-row">
+        <span id="lastCall1" class="last-call-circle">-</span>
+        <span id="lastCall2" class="last-call-circle">-</span>
+        <span id="lastCall3" class="last-call-circle">-</span>
+      </div>
+      <div class="afro-toggles">
+        <button id="voiceButton" type="button" onclick="toggleVoice()">🔊 Sound</button>
+        <button id="autoModeButton" type="button" onclick="toggleAutoMode()">⚡ Auto</button>
+      </div>
+      <div class="cards-scroll-container cards-2col" id="bingoCardsContainer"></div>
+      <button type="button" class="btn-bingo-inline" id="bingoButton" onclick="claimBingo()">Bingo!</button>
     </div>
+  </div>
 
-    <div class="game-bottom-bar">
-        <button type="button" class="btn-leave" onclick="leaveToHome()">← Leave</button>
-        <button type="button" class="btn-refresh" onclick="refreshGameInside()">🔄 Refresh</button>
-    </div>
+  <div class="afro-bottom">
+    <button type="button" class="btn-leave" onclick="leaveToHome()">← Leave</button>
+    <button type="button" class="btn-refresh" onclick="refreshGameInside()">↻ Refresh</button>
+  </div>
 </div>
 
 </section>
@@ -435,11 +519,16 @@ document.addEventListener('click', () => {
     dummyAudio.play().catch(() => {});
 }, { once: true });
 
+function formatBal(v){
+    const n = parseFloat(v);
+    if (isNaN(n)) return "0";
+    return (Math.round(n * 100) / 100).toString();
+}
 function updatePrizePool(customCount, customStake) {
     const pCount = customCount !== undefined ? customCount : (parseInt(document.getElementById("playerCount").textContent) || 1);
     const stake = customStake !== undefined ? customStake : (parseInt(document.getElementById("gameStake").textContent) || currentStake);
     const prize = arguments.length >= 3 && arguments[2] !== undefined ? arguments[2] : Math.round(pCount * stake * 0.8);
-    document.getElementById("prizePool").textContent = prize + " ብር";
+    document.getElementById("prizePool").textContent = formatBal(prize);
 }
 
 function getServerCardNumbersJS(seed) {
@@ -503,7 +592,7 @@ async function login(){
         
         player = data.player;
         if (player && player.telegram_id) socket.emit('register_telegram_user', player.telegram_id);
-        document.getElementById("wallet").textContent = (player && player.balance !== undefined) ? player.balance : 0;
+        document.getElementById("wallet").textContent = formatBal(player && player.balance);
         updateProfileUI(player);
         
         document.getElementById("loginStatus").textContent = "✅ ገብተዋል";
@@ -531,7 +620,7 @@ function fetchLatestBalance() {
     .then(data => {
         if(data.ok && data.player) {
             player = data.player;
-            document.getElementById("wallet").textContent = player.balance !== undefined ? player.balance : 0;
+            document.getElementById("wallet").textContent = formatBal(player.balance);
             updateProfileUI(player);
         }
     }).catch(err => console.log("Balance fetch error:", err));
@@ -552,12 +641,19 @@ function showPage(id){
 }
 
 function leaveToHome(){
+    stopGameAudio();
     socket.emit('leave_room');
     gameInProgress = false;
     selectedCards = [];
     takenCards = [];
     currentDrawnNumbers = [];
+    lastCallsArray = [];
+    autoBingoClaimed = false;
+    try { updateLastCallsUI(); } catch(e) {}
+    const cc = document.getElementById('currentCall');
+    if (cc) cc.textContent = '—';
     showPage('home');
+    fetchLatestBalance();
 }
 function handleStakeClick(stake){
     // ከቀድሞ ክፍል ውጣ — የቀድሞ ጨዋታ ለዚህ ተጫዋች ይቆማል
@@ -1007,7 +1103,7 @@ socket.on('card_error', (msg) => { alert(msg); });
 
 socket.on('update_wallet', (bal) => { 
     if(player) player.balance = bal;
-    document.getElementById("wallet").textContent = bal !== undefined ? bal : "0"; 
+    document.getElementById("wallet").textContent = formatBal(bal); 
 });
 
 socket.on('game_ended', (data) => {
@@ -1213,8 +1309,9 @@ function toggleVoice(){
     voiceEnabled = !voiceEnabled;
     const btn = document.getElementById("voiceButton");
     if(btn) {
-        btn.textContent = voiceEnabled ? "🔊 ድምጽ: አብራ" : "🔇 ድምጽ: አጥፋ";
-        btn.style.background = voiceEnabled ? "#079b20" : "#b51a1a";
+        btn.textContent = voiceEnabled ? "🔊 Sound" : "🔇 Sound";
+        btn.style.background = voiceEnabled ? "#079b20" : "#9e9e9e";
+        btn.style.color = "#fff";
     }
 }
 
@@ -1222,8 +1319,8 @@ function toggleAutoMode(){
     isAutoMarkEnabled = !isAutoMarkEnabled;
     const btn = document.getElementById("autoModeButton");
     if(btn) {
-        btn.textContent = isAutoMarkEnabled ? "⚡ ራሱ ይጥላት" : "✋ በእጅ (Manual)";
-        btn.style.background = isAutoMarkEnabled ? "#007bff" : "#6c757d";
+        btn.textContent = isAutoMarkEnabled ? "⚡ Auto" : "✋ Manual";
+        btn.style.background = isAutoMarkEnabled ? "#007bff" : "#9e9e9e";
     }
     // Auto ሲሆንም BINGO ቁልፍ ይቆያል (አይጠፋም)
 }
@@ -1243,20 +1340,28 @@ socket.on('update_history', (history) => {
     `).join('');
 });
 
+let currentGameAudio = null;
+function stopGameAudio(){
+    try {
+        if (currentGameAudio) {
+            currentGameAudio.pause();
+            currentGameAudio.currentTime = 0;
+            currentGameAudio = null;
+        }
+    } catch(e) {}
+}
 function playRecordedVoice(num){
     if(!voiceEnabled) return;
-    
+    stopGameAudio();
     let letter = 'b';
     if(num >= 1 && num <= 15) letter = 'b';
     else if(num >= 16 && num <= 30) letter = 'i';
     else if(num >= 31 && num <= 45) letter = 'n';
     else if(num >= 46 && num <= 60) letter = 'g';
     else if(num >= 61 && num <= 75) letter = 'o';
-
     const audioUrl = `${window.location.origin}/sounds/${letter}${num}.mp3`;
-    const audio = new Audio(audioUrl);
-    
-    audio.play().catch(e => console.log(`❌ Audio play error (${letter}${num}.mp3):`, e));
+    currentGameAudio = new Audio(audioUrl);
+    currentGameAudio.play().catch(e => console.log('Audio play error:', e));
 }
 
 login();
