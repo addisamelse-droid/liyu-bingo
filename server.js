@@ -668,11 +668,19 @@ io.on('connection', (socket) => {
         socket.emit('left_room', { ok: true });
     });
 
-    // 🟢 ተጫዋች Room ውስጥ ሲገባ
-    socket.on('join_room', (stake) => {
-        const stakeNum = parseInt(stake) || 10;
+    // 🟢 ተጫዋች Room ውስጥ ሲገባ (ተመሳሳይ room ይቀጥላል — Leave ካልተጫኑ)
+    socket.on('join_room', (payload) => {
+        // number ወይም { stake: 20 } ሁለቱንም ይቀበላል
+        let stakeNum = 10;
+        if (payload && typeof payload === 'object') {
+            stakeNum = parseInt(payload.stake) || 10;
+            if (payload.telegram_id) socket.telegramId = String(payload.telegram_id);
+        } else {
+            stakeNum = parseInt(payload) || 10;
+        }
+        if (![10, 20, 50].includes(stakeNum)) stakeNum = 10;
 
-        // ከሌላ room ከመጣ — የቀድሞውን ለይ
+        // ሌላ room ከመጣ ብቻ ቀድሞውን ለይ (ተመሳሳይ room = አትለይ)
         if (socket.currentStake && socket.currentStake !== stakeNum) {
             leaveCurrentRoom(socket, 'switch');
         }

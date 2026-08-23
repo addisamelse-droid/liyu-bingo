@@ -765,12 +765,14 @@ function handleStakeClick(stake){
 }
 
 function refreshGameInside(){
+    const stake = currentStake || parseInt(document.getElementById("gameStake").textContent) || 10;
+    currentStake = stake;
     currentDrawnNumbers = [];
     lastCallsArray = [];
     updateLastCallsUI();
     updateCalledNumbersUI([]);
     document.getElementById("currentCall").textContent = "—";
-    socket.emit('join_room', currentStake);
+    socket.emit('join_room', stake);
 }
 
 function buildCardGrid(){
@@ -1277,16 +1279,18 @@ socket.on('game_ended', (data) => {
         takenCards = [];
         autoBingoClaimed = false;
         gameInProgress = false;
+        currentDrawnNumbers = [];
+        lastCallsArray = [];
+        try { updateLastCallsUI(); } catch(e) {}
         document.getElementById("mainGameSection").classList.add("hide");
         document.getElementById("cardSelectionSection").classList.remove("hide");
         buildCardGrid();
         updateCardGridUI();
-        if (typeof socket !== "undefined" && currentStake) {
-            socket.emit("join_room", {
-                stake: currentStake,
-                telegram_id: player ? player.telegram_id : null,
-                playerName: player ? player.name : "ተጫዋች"
-            });
+        // ተመሳሳይ room ብቻ — Leave ካልተጫኑ አትቀይር
+        const stake = currentStake || parseInt(document.getElementById("gameStake").textContent) || 10;
+        currentStake = stake;
+        if (typeof socket !== "undefined" && stake) {
+            socket.emit("join_room", stake);
         }
     }
 
@@ -1315,6 +1319,10 @@ socket.on('reset_player_card', () => {
     
     buildCardGrid();
     updateCardGridUI();
+    // ተመሳሳይ stake room ላይ ቀጥል
+    if (currentStake) {
+        socket.emit('join_room', currentStake);
+    }
 });
 
 
