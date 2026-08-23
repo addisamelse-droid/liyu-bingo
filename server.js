@@ -28,7 +28,7 @@ app.use('/sounds', express.static(path.join(__dirname, 'sounds')));
 app.use('/sounds', express.static(path.join(__dirname, 'public', 'sounds')));
 
 // 🟢 2. CONFIG - እዚህ የራስህን እሴቶች ማስገባት ትችላለህ (Render env ካለ ይመረጣል)
-const HARDCODED_MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0";       // ← MongoDB URLህን እዚህ ጻፍ
+const HARDCODED_MONGO_URI = "//addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0";       // ← MongoDB URLህን እዚህ ጻፍ
 const HARDCODED_BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0";       // ← Bot Tokenህን እዚህ ጻፍ
 const HARDCODED_ADMIN_CHAT_ID = "2134795751"; // ← Telegram IDህን እዚህ ጻፍ
 
@@ -85,10 +85,12 @@ async function getUserData(socketId, telegramId = null) {
 // 🟢 3. Telegram Profile Authentication API Route
 app.post('/api/profile', async (req, res) => {
     try {
-        const { telegram_id, name, username } = req.body;
-        const tid = telegram_id ? telegram_id.toString() : '123456789';
-        const pName = name || 'Demo Player';
-        const pUsername = username || 'demo';
+        const body = req.body || {};
+        const tid = String(body.telegram_id || body.id || '').trim();
+        if (!tid) return res.status(400).json({ ok: false, error: 'telegram_id required' });
+        const pName = body.name || body.first_name || 'ተጫዋች';
+        const pUsername = body.username || '';
+        const agentRef = body.agent_id ? String(body.agent_id) : null;
 
         let user = await User.findOne({ telegram_id: tid });
         if (!user) {
@@ -96,14 +98,33 @@ app.post('/api/profile', async (req, res) => {
                 telegram_id: tid,
                 name: pName,
                 username: pUsername,
-                balance: 10, // የመጀመሪያ ቦነስ
+                balance: 10,
                 hasUsedBonus: false,
-                history: []
+                history: [],
+                agent_id: agentRef
             });
             await user.save();
+        } else {
+            if (agentRef && !user.agent_id && !user.is_agent && String(agentRef) !== tid) {
+                user.agent_id = agentRef;
+                await user.save();
+            }
         }
 
-        res.json({ ok: true, player: user });
+        res.json({
+            ok: true,
+            player: {
+                telegram_id: user.telegram_id,
+                name: user.name,
+                username: user.username,
+                phone: user.phone,
+                balance: user.balance,
+                history: user.history || [],
+                is_agent: !!user.is_agent,
+                agent_id: user.agent_id || null,
+                agent_balance: user.agent_balance || 0
+            }
+        });
     } catch (error) {
         console.error('API Profile Error:', error);
         res.status(500).json({ ok: false, error: error.message });
@@ -691,6 +712,31 @@ io.on('connection', (socket) => {
         const room = rooms[stakeNum];
         if (!room) return;
 
+        // 🟢 Refresh / reconnect: telegram_id ካለ ካርዶችን መልስ አያይዝ
+        const tid = (socket.telegramId || '').toString();
+        let myCards = [];
+        let isMyPlayer = false;
+        if (tid) {
+            // ቀድሞ በሌላ socket_id የተመዘገበ ተጫዋች ካለ — ወደ አዲስ socket አስተላልፍ
+            for (const [oldSid, pl] of Object.entries(room.players)) {
+                if (pl && pl.telegram_id && String(pl.telegram_id) === tid) {
+                    myCards = (pl.cardNums || []).slice();
+                    isMyPlayer = myCards.length > 0;
+                    if (oldSid !== socket.id) {
+                        room.players[socket.id] = {
+                            playerName: pl.playerName || 'ተጫዋች',
+                            cardNums: myCards.slice(),
+                            telegram_id: tid
+                        };
+                        delete room.players[oldSid];
+                    } else {
+                        room.players[socket.id] = pl;
+                    }
+                    break;
+                }
+            }
+        }
+
         const activePlayerCount = getActivePlayerCount(room);
         const totalCardsBought = room.takenCards.length;
         const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
@@ -703,17 +749,22 @@ io.on('connection', (socket) => {
             timeLeft: room.timeLeft,
             stake: stakeNum,
             isGameInProgress: !!room.isGameInProgress,
-            drawnNumbers: room.drawnNumbers || []
+            drawnNumbers: room.drawnNumbers || [],
+            myCards: myCards
         });
 
         socket.emit('update_taken_cards', room.takenCards);
+        if (myCards.length > 0) {
+            socket.emit('card_selected_success', { selectedCards: myCards });
+        }
 
-        // ጨዋታ እየተካሄደ ከሆነ → spectator ብቻ (ካርድ አይይዝም)
+        // ጨዋታ እየተካሄደ ከሆነ
         if (room.isGameInProgress) {
+            const spectator = !isMyPlayer;
             socket.emit('game_started', {
                 gameId: room.gameId,
                 prizePool: prizePool,
-                isSpectator: true
+                isSpectator: spectator
             });
 
             if (room.drawnNumbers && room.drawnNumbers.length > 0) {
@@ -761,7 +812,8 @@ io.on('connection', (socket) => {
         if (!room.players[socket.id]) {
             room.players[socket.id] = {
                 playerName: data.playerName || "ተጫዋች",
-                cardNums: []
+                cardNums: [],
+                telegram_id: null
             };
         }
 
@@ -770,6 +822,7 @@ io.on('connection', (socket) => {
         // telegram_id ከ data ወይም ከ socket ውሰድ (የበለጠ አስተማማኝ)
         const tid = (data.telegram_id || socket.telegramId || '').toString();
         if (tid && !socket.telegramId) socket.telegramId = tid;
+        if (tid) player.telegram_id = tid;
         
         const user = await getUserData(socket.id, tid || socket.telegramId);
 
@@ -802,6 +855,7 @@ io.on('connection', (socket) => {
             }
             
             player.cardNums.push(cardNum);
+            player.telegram_id = tid || player.telegram_id || null;
             user.balance -= stake;
 
             user.history.unshift({
@@ -814,6 +868,30 @@ io.on('connection', (socket) => {
             if (!user.hasUsedBonus) {
                 user.hasUsedBonus = true; 
             }
+
+            // 🟢 Agent 10% commission ከ stake
+            try {
+                if (user.agent_id) {
+                    const agent = await User.findOne({ telegram_id: String(user.agent_id), is_agent: true });
+                    if (agent) {
+                        const commission = Math.round(stake * 0.10 * 100) / 100;
+                        agent.agent_balance = (agent.agent_balance || 0) + commission;
+                        agent.balance = (agent.balance || 0) + commission;
+                        if (!agent.history) agent.history = [];
+                        agent.history.unshift({
+                            date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                            type: 'Agent Commission',
+                            amount: commission,
+                            from: tid,
+                            stake: stake,
+                            status: 'Completed'
+                        });
+                        if (agent.history.length > 50) agent.history = agent.history.slice(0, 50);
+                        await agent.save();
+                        io.to(`user_${agent.telegram_id}`).emit('update_wallet', agent.balance);
+                    }
+                }
+            } catch (e) { console.error('Agent commission error', e); }
         }
 
         // ታሪክ ከ 30 በላይ ካለ አሮጌውን አስወግድ
@@ -1006,6 +1084,62 @@ setInterval(() => {
 
 // 🟢 7. Server Listener
 const PORT = process.env.PORT || 3000;
+
+
+// ========== AGENT / ADMIN APIs ==========
+app.post('/api/agent/dashboard', async (req, res) => {
+    try {
+        const tid = String(req.body.telegram_id || '');
+        if (!tid) return res.json({ ok: false, error: 'no id' });
+        const agent = await User.findOne({ telegram_id: tid });
+        if (!agent || !agent.is_agent) return res.json({ ok: false, error: 'agent አይደሉም' });
+        const players = await User.find({ agent_id: tid }).select('telegram_id name username phone balance history').lean();
+        let totalDeposit = 0, totalWithdraw = 0, totalCommission = 0;
+        const playerList = players.map(p => {
+            let dep = 0, wd = 0;
+            (p.history || []).forEach(h => {
+                if (h.type === 'Deposit' && (h.status === 'Approved' || h.status === 'Completed')) dep += Number(h.amount)||0;
+                if (h.type === 'Withdraw' && (h.status === 'Completed' || h.status === 'Approved')) wd += Number(h.amount)||0;
+            });
+            totalDeposit += dep; totalWithdraw += wd;
+            return { id: p.telegram_id, name: p.name, username: p.username, phone: p.phone, balance: p.balance, deposit: dep, withdraw: wd };
+        });
+        (agent.history || []).forEach(h => {
+            if (h.type === 'Agent Commission') totalCommission += Number(h.amount)||0;
+        });
+        res.json({
+            ok: true,
+            agent: { name: agent.name, balance: agent.balance, agent_balance: agent.agent_balance || 0, totalCommission },
+            players: playerList,
+            stats: { playerCount: players.length, totalDeposit, totalWithdraw, totalCommission }
+        });
+    } catch (e) {
+        res.json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/admin/create_agent', async (req, res) => {
+    try {
+        const adminId = String(req.body.admin_id || '');
+        const agentTid = String(req.body.agent_telegram_id || '');
+        if (!adminId || adminId !== String(ADMIN_CHAT_ID)) {
+            return res.json({ ok: false, error: 'Admin ብቻ' });
+        }
+        if (!agentTid) return res.json({ ok: false, error: 'agent_telegram_id ያስፈልጋል' });
+        let user = await User.findOne({ telegram_id: agentTid });
+        if (!user) {
+            user = new User({ telegram_id: agentTid, name: req.body.name || 'Agent', balance: 0, is_agent: true, role: 'agent', history: [] });
+        } else {
+            user.is_agent = true;
+            user.role = 'agent';
+        }
+        await user.save();
+        res.json({ ok: true, agent: { telegram_id: user.telegram_id, name: user.name } });
+    } catch (e) {
+        res.json({ ok: false, error: e.message });
+    }
+});
+
 
 http.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT}`);

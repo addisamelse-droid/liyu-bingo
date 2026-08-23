@@ -27,7 +27,7 @@ from telegram.ext import (
 # -------------------------------------------------------------
 # CONFIGURATION - እዚህ የራስህን እሴቶች አስገባ
 # -------------------------------------------------------------
-BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ
+BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ"mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ
 MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ MongoDB URLህን እዚህ ጻፍ
 ADMIN_ID = "2134795751"           # ← የ Telegram IDህን እዚህ ጻፍ
 
@@ -52,6 +52,8 @@ CARD_PRICE = "10, 20, 50"
 REFERRAL_BONUS = 2.0
 WELCOME_BONUS = 10.0
 MIN_WITHDRAW = 50.0
+MIN_REMAIN = 10.0
+BONUS_WINS_REQUIRED = 5
 
 BOT_NAME = "Liyu Bingo"
 CURRENCY = "Birr"
@@ -95,6 +97,30 @@ def mark_txn_used(txn_id, telegram_id, amount):
         "amount": float(amount),
         "used_at": __import__("datetime").datetime.utcnow()
     })
+
+
+def set_agent(telegram_id, name="Agent"):
+    init_db()
+    players_col.update_one(
+        {"telegram_id": str(telegram_id)},
+        {"$set": {"is_agent": True, "role": "agent", "name": name},
+         "$setOnInsert": {"balance": 0.0, "history": [], "agent_balance": 0.0}},
+        upsert=True
+    )
+
+def set_player_agent(player_id, agent_id):
+    init_db()
+    if str(player_id) == str(agent_id):
+        return
+    players_col.update_one(
+        {"telegram_id": str(player_id), "agent_id": {"$exists": False}},
+        {"$set": {"agent_id": str(agent_id)}}
+    )
+    # also if agent_id is null
+    players_col.update_one(
+        {"telegram_id": str(player_id), "agent_id": None},
+        {"$set": {"agent_id": str(agent_id)}}
+    )
 
 def extract_txn_id(text):
     """From message like: 100 TXN123456"""
@@ -174,6 +200,47 @@ def get_player(telegram_id):
     init_db()
     return players_col.find_one({"telegram_id": str(telegram_id)})
 
+
+def player_has_deposit(player):
+    if not player:
+        return False
+    for h in (player.get("history") or []):
+        if not h:
+            continue
+        if h.get("type") == "Deposit" and h.get("status") in ("Approved", "Completed"):
+            return True
+    return False
+
+def player_win_count(player):
+    if not player:
+        return 0
+    n = 0
+    for h in (player.get("history") or []):
+        if h and h.get("type") in ("Win", "Prize"):
+            n += 1
+    return n
+
+def can_withdraw(player, amount):
+    """Returns (ok: bool, error_message: str)"""
+    bal = float(player.get("balance", 0) or 0) if player else 0.0
+    amount = float(amount or 0)
+    if amount < MIN_WITHDRAW:
+        return False, f"⚠️ አነስተኛው withdraw <b>{MIN_WITHDRAW} ብር</b> ነው።"
+    if amount > bal:
+        return False, f"❌ ባላንስ በቂ አይደለም። (ባላንስ: {bal} ብር)"
+    if bal - amount < MIN_REMAIN:
+        return False, f"⚠️ ከ withdraw በኋላ ቢያንስ <b>{MIN_REMAIN} ብር</b> በ wallet መቆየት አለበት።\nከፍተኛው የሚወጣ: <b>{max(0, bal - MIN_REMAIN)} ብር</b>"
+    # Bonus only → 5 wins required; deposit ካለ ይፈቀዳል
+    if not player_has_deposit(player):
+        wins = player_win_count(player)
+        if wins < BONUS_WINS_REQUIRED:
+            return False, (
+                f"🎁 የ ቦነስ ገንዘብ ለማውጣት ቢያንስ <b>{BONUS_WINS_REQUIRED} ጨዋታ win</b> ያስፈልጋል።\n"
+                f"አሁን ያሸነፉት: <b>{wins}/{BONUS_WINS_REQUIRED}</b>\n"
+                f"ወይም Deposit ካደረጉ በኋላ win ካደረጉ withdraw ይችላሉ።"
+            )
+    return True, ""
+
 def extract_first_number(text):
     match = re.search(r'\b\d+(\.\d+)?\b', text)
     if match:
@@ -187,8 +254,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     player = get_player(user.id)
 
-    if context.args and context.args[0].isdigit():
-        context.user_data['referred_by'] = int(context.args[0])
+    if context.args:
+        arg0 = context.args[0]
+        if arg0.isdigit():
+            context.user_data['referred_by'] = int(arg0)
+        elif str(arg0).startswith('ag_'):
+            context.user_data['agent_id'] = str(arg0)[3:]
+
 
     if player and player.get("phone"):
         await update.message.reply_text(
@@ -220,6 +292,9 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     referred_by = context.user_data.get('referred_by', 0)
     is_new = add_player(user.id, user.first_name, user.username, referred_by, phone_number)
+    agent_id = context.user_data.get('agent_id')
+    if agent_id:
+        set_player_agent(user.id, agent_id)
 
     if not is_new:
         update_phone(user.id, phone_number)
@@ -282,24 +357,36 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 2. Withdraw
     elif "ብር ማውጫ" in text or "Withdraw" in text:
         bal = player.get("balance", 0.0) if player else 0.0
-        if bal < MIN_WITHDRAW:
+        if bal < MIN_WITHDRAW + MIN_REMAIN:
             await update.message.reply_text(
-                f"⚠️ ብር ለማውጣት አነስተኛው መጠን <b>{MIN_WITHDRAW} ብር</b> መሆን አለበት።\n\nየእርስዎ ቀሪ ሂሳብ: <b>{bal} ብር</b>",
+                f"⚠️ Withdraw ለማድረግ ቢያንስ <b>{MIN_WITHDRAW + MIN_REMAIN} ብር</b> ያስፈልጋል "
+                f"(min {MIN_WITHDRAW} + በ wallet የሚቀር {MIN_REMAIN})።\n\n"
+                f"ባላንስዎ: <b>{bal} ብር</b>",
                 parse_mode="HTML",
                 reply_markup=get_persistent_keyboard()
             )
             return
 
         context.user_data['action'] = 'waiting_withdraw'
+        wins = player_win_count(player)
+        has_dep = player_has_deposit(player)
+        max_out = max(0, bal - MIN_REMAIN)
+        rule = (
+            f"✅ Deposit አለዎት — win ካለ withdraw ይቻላል"
+            if has_dep else
+            f"🎁 ቦነስ: {wins}/{BONUS_WINS_REQUIRED} wins (5 win ያስፈልጋል)"
+        )
         await update.message.reply_text(
             f"""
 💸 <b>ብር ማውጫ</b>
 
-💰 <b>የእርስዎ ቀሪ ሂሳብ:</b> {bal} ብር
+💰 <b>ባላንስ:</b> {bal} ብር
+📤 <b>ከፍተኛው:</b> {max_out} ብር (ቢያንስ {MIN_REMAIN} ብር ይቀራል)
+🔹 <b>አነስተኛ:</b> {MIN_WITHDRAW} ብር
+📋 {rule}
 
-እባክዎን **የሚያወጡትን የብር መጠን** እና **የ ቴሌብር/ሲቢኢ ቁጥርዎን** በአንድ መስመር ፅፈው ይላኩ!
-
-<i>(ምሳሌ፡ 100 ቴሌብር 0911223344)</i>
+እባክዎ **መጠን + ቴሌብር/ሲቢኢ ቁጥር** ይላኩ።
+<i>ምሳሌ፡ 50 ቴሌብር 0911223344</i>
 """,
             parse_mode="HTML",
             reply_markup=get_persistent_keyboard()
@@ -435,11 +522,9 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         parsed_amount = extract_first_number(text)
         current_bal = player.get("balance", 0.0) if player else 0.0
 
-        if parsed_amount <= 0 or parsed_amount > current_bal or parsed_amount < MIN_WITHDRAW:
-            await update.message.reply_text(
-                f"❌ የተሳሳተ ወይም በቂ ያልሆነ የብር መጠን። (ባላንስ: {current_bal} ብር)",
-                reply_markup=get_persistent_keyboard()
-            )
+        ok, err = can_withdraw(player, parsed_amount)
+        if not ok:
+            await update.message.reply_text(err, parse_mode="HTML", reply_markup=get_persistent_keyboard())
             return
 
         context.user_data['action'] = None
@@ -576,6 +661,32 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_persistent_keyboard()
         )
 
+
+async def cmd_createagent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID):
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args:
+        await update.message.reply_text("አጠቃቀም: /createagent TELEGRAM_ID")
+        return
+    aid = context.args[0].strip()
+    set_agent(aid, name=f"Agent {aid}")
+    await update.message.reply_text(
+        f"✅ Agent ተፈጥሯል!\nID: <code>{aid}</code>\nLink: https://t.me/{(await context.bot.get_me()).username}?start=ag_{aid}",
+        parse_mode="HTML"
+    )
+
+async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID):
+        return
+    init_db()
+    agents = list(players_col.find({"is_agent": True}).limit(50))
+    if not agents:
+        await update.message.reply_text("Agent የለም")
+        return
+    lines = [f"• {a.get('name')} — <code>{a.get('telegram_id')}</code> (bal: {a.get('agent_balance', a.get('balance', 0))})" for a in agents]
+    await update.message.reply_text("🤝 Agents:\n" + "\n".join(lines), parse_mode="HTML")
+
 # -------------------------------------------------------------
 # MAIN APP LAUNCH
 # -------------------------------------------------------------
@@ -596,6 +707,8 @@ if __name__ == "__main__":
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("createagent", cmd_createagent))
+    app.add_handler(CommandHandler("agents", cmd_agents))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(CallbackQueryHandler(admin_approval, pattern="^(app_|rej_)"))
     app.add_handler(CallbackQueryHandler(buttons))

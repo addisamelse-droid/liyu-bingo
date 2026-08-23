@@ -550,11 +550,36 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 </div>
 </section>
 
+
+<!-- ================= AGENT DASHBOARD ================= -->
+<section id="agentPage" class="page hide">
+<div class="afro-card">
+  <div class="afro-label">AGENT DASHBOARD</div>
+  <div class="afro-balance-lg">Br <span id="agentBal">0.00</span></div>
+  <div class="afro-sub">Commission balance</div>
+</div>
+<div class="afro-three">
+  <div class="afro-mini"><div class="afro-label">PLAYERS</div><div class="afro-mini-val" id="agentPlayers">0</div></div>
+  <div class="afro-mini"><div class="afro-label">DEPOSIT</div><div class="afro-mini-val">Br <span id="agentDep">0</span></div></div>
+  <div class="afro-mini"><div class="afro-label">WITHDRAW</div><div class="afro-mini-val">Br <span id="agentWd">0</span></div></div>
+</div>
+<div class="afro-card" style="margin-top:10px;">
+  <div class="afro-label">REFERRAL LINK</div>
+  <p style="font-size:12px;word-break:break-all;margin:8px 0;" id="agentLink">—</p>
+  <button class="btn" type="button" onclick="copyAgentLink()" style="margin:0;">📋 Copy Link</button>
+</div>
+<div class="afro-card" style="margin-top:10px;">
+  <div class="afro-label">MY PLAYERS</div>
+  <div id="agentPlayerList" style="font-size:13px;">—</div>
+</div>
+</section>
+
 <div class="tabs">
 <button type="button" onclick="showPage('home')">🎮<br>Game</button>
 <button type="button" onclick="showHistory()">🕘<br>History</button>
 <button type="button" onclick="showWalletPage()">💳<br>Wallet</button>
 <button type="button" onclick="showProfilePage()">👤<br>Profile</button>
+<button type="button" id="agentTabBtn" onclick="showAgentPage()" style="display:none;">🤝<br>Agent</button>
 </div>
 
 <script>
@@ -636,11 +661,17 @@ function getServerCardNumbersJS(seed) {
 function getTelegramUser(){
     if(tg && tg.initDataUnsafe && tg.initDataUnsafe.user){
         const u = tg.initDataUnsafe.user;
-        return {
+        const out = {
             telegram_id: String(u.id),
             name: ((u.first_name || "") + " " + (u.last_name || "")).trim(),
             username: u.username ? "@" + u.username : ""
         };
+        // Agent referral: startapp=ag_TELEGRAMID ወይም start_param
+        const sp = tg.initDataUnsafe.start_param || "";
+        if (sp && String(sp).startsWith("ag_")) {
+            out.agent_id = String(sp).replace(/^ag_/, "");
+        }
+        return out;
     }
     return { telegram_id:"123456789", name:"Demo Player", username:"demo" };
 }
@@ -661,6 +692,10 @@ async function login(){
         if (player && player.telegram_id) socket.emit('register_telegram_user', player.telegram_id);
         document.getElementById("wallet").textContent = formatBal(player && player.balance);
         updateProfileUI(player);
+        if (player.is_agent) {
+            const ab = document.getElementById('agentTabBtn');
+            if (ab) ab.style.display = '';
+        }
         
         document.getElementById("loginStatus").textContent = "✅ ገብተዋል";
         setTimeout(() => showPage("home"), 700);
@@ -699,7 +734,7 @@ function refreshWallet() {
 }
 
 function showPage(id){
-    ["login", "home", "game", "historyPage", "walletPage", "profilePage"].forEach(p => {
+    ["login", "home", "game", "historyPage", "walletPage", "profilePage", "agentPage"].forEach(p => {
         document.getElementById(p).classList.toggle("hide", p !== id);
     });
     if(id === 'home') {
@@ -767,12 +802,15 @@ function handleStakeClick(stake){
 function refreshGameInside(){
     const stake = currentStake || parseInt(document.getElementById("gameStake").textContent) || 10;
     currentStake = stake;
-    currentDrawnNumbers = [];
-    lastCallsArray = [];
-    updateLastCallsUI();
-    updateCalledNumbersUI([]);
-    document.getElementById("currentCall").textContent = "—";
-    socket.emit('join_room', stake);
+    // ካርድ አትሰርዝ — server myCards ይመልሳል
+    if (player && player.telegram_id) {
+        socket.emit('register_telegram_user', player.telegram_id);
+    }
+    socket.emit('join_room', {
+        stake: stake,
+        telegram_id: player ? player.telegram_id : null,
+        playerName: player ? player.name : 'ተጫዋች'
+    });
 }
 
 function buildCardGrid(){
@@ -940,12 +978,20 @@ socket.on('init_state', (data) => {
     updatePrizePool(data.playerCount, data.stake || currentStake, data.prizePool);
     gameInProgress = !!data.isGameInProgress;
 
-    // ጨዋታ እየተካሄደ ሳለ ሲገባ → spectator mode (ካርድ አይይዝም)
+    // Refresh: የራስዎ ካርዶችን መልስ
+    if (data.myCards && Array.isArray(data.myCards) && data.myCards.length > 0) {
+        selectedCards = data.myCards.map(Number).slice(0, 3);
+        updateCardGridUI();
+    }
+
+    // ጨዋታ እየተካሄደ ሳለ ሲገባ
     if (data.isGameInProgress) {
         document.getElementById("cardSelectionSection").classList.add("hide");
         document.getElementById("mainGameSection").classList.remove("hide");
         document.getElementById("winnerBox").classList.add("hide");
-        selectedCards = [];
+        if (!(data.myCards && data.myCards.length)) {
+            selectedCards = [];
+        }
 
         if (selectedCards && selectedCards.length > 0) {
             renderAllBingoCards();
@@ -999,6 +1045,7 @@ socket.on('game_started', (data) => {
     document.getElementById("cardSelectionSection").classList.add("hide");
     document.getElementById("mainGameSection").classList.remove("hide");
     autoBingoClaimed = false;
+    // spectator ከሆነ እና ካርድ ከሌለ ብቻ — refresh ካርድ አያጥፋ
 // BINGO ቁልፍ ሁልጊዜ ይታያል
     const bingoBtn = document.getElementById("bingoButton");
     if(bingoBtn) bingoBtn.style.display = "block";
@@ -1380,6 +1427,43 @@ function updateProfSound(){
     b.textContent = voiceEnabled ? 'ON' : 'OFF';
     b.className = 'afro-toggle ' + (voiceEnabled ? 'on' : 'off');
 }
+
+function showAgentPage(){
+    showPage('agentPage');
+    loadAgentDashboard();
+}
+function copyAgentLink(){
+    const el = document.getElementById('agentLink');
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent).then(()=>alert('Link ተቀድቷል!')).catch(()=>alert(el.textContent));
+}
+async function loadAgentDashboard(){
+    if (!player || !player.telegram_id) return;
+    try {
+        const res = await fetch('/api/agent/dashboard', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ telegram_id: player.telegram_id })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            document.getElementById('agentPlayerList').textContent = data.error || 'Agent አይደሉም';
+            return;
+        }
+        document.getElementById('agentBal').textContent = fmtBr(data.agent.agent_balance || data.agent.balance);
+        document.getElementById('agentPlayers').textContent = data.stats.playerCount;
+        document.getElementById('agentDep').textContent = fmtBr(data.stats.totalDeposit);
+        document.getElementById('agentWd').textContent = fmtBr(data.stats.totalWithdraw);
+        const botUser = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) ? '' : '';
+        // link uses agent telegram id
+        document.getElementById('agentLink').textContent = 'https://t.me/' + ((window._botUsername)||'YourBot') + '?start=ag_' + player.telegram_id;
+        const list = document.getElementById('agentPlayerList');
+        if (!data.players.length) list.innerHTML = '<p>ተጫዋች የለም</p>';
+        else list.innerHTML = data.players.map(p =>
+            `<div class="afro-stat-row"><span>${p.name||p.id}<br><small>${p.phone||''}</small></span><b>D:${fmtBr(p.deposit)} W:${fmtBr(p.withdraw)}</b></div>`
+        ).join('');
+    } catch(e) { console.log(e); }
+}
+
 function showWalletPage(){
     showPage('walletPage');
     if(player) fillWalletUI(player);
