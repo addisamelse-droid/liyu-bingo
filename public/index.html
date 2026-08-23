@@ -307,6 +307,73 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   .afro-current-pill{min-width:40px;height:40px;font-size:13px;}
 }
 
+
+/* ===== Full board + adaptive player cards ===== */
+.afro-play{
+  display:grid!important;
+  grid-template-columns:1.25fr 1fr!important;
+  gap:6px!important;
+  align-items:stretch!important;
+  min-height:58vh;
+}
+.afro-board{
+  background:#e8def0!important;
+  border-radius:14px!important;
+  padding:6px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  height:100%!important;
+  min-height:58vh!important;
+}
+.afro-board .numbers-container{
+  flex:1!important;
+  gap:3px!important;
+  align-content:stretch!important;
+}
+.afro-board .numbers-col{
+  flex:1!important;
+  justify-content:space-between!important;
+  gap:2px!important;
+}
+.afro-board .numbers-col span{
+  flex:1!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  font-size:clamp(10px, 2.8vw, 13px)!important;
+  padding:2px 0!important;
+  border-radius:7px!important;
+}
+.afro-right{min-height:58vh;display:flex;flex-direction:column;}
+#bingoCardsContainer.cards-1{
+  display:block!important;
+  max-height:none!important;
+  overflow:visible!important;
+}
+#bingoCardsContainer.cards-1 .box{
+  margin:0!important;
+  padding:8px!important;
+}
+#bingoCardsContainer.cards-1 .bingo div{
+  padding:8px 2px!important;
+  font-size:15px!important;
+}
+#bingoCardsContainer.cards-multi{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:6px!important;
+  max-height:38vh!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  flex:1;
+}
+#bingoCardsContainer.cards-multi .box{margin:0!important;padding:5px!important;}
+#bingoCardsContainer.cards-multi .bingo div{padding:4px 1px!important;font-size:11px!important;}
+#bingoCardsContainer.cards-multi h4{font-size:11px!important;margin:0 0 2px!important;}
+@media (max-width:380px){
+  #bingoCardsContainer.cards-multi{grid-template-columns:1fr!important;max-height:36vh!important;}
+}
+
 </style>
 </head>
 <body>
@@ -649,9 +716,22 @@ function leaveToHome(){
     currentDrawnNumbers = [];
     lastCallsArray = [];
     autoBingoClaimed = false;
+    cardNumbersMap = {};
+    currentStake = null;
     try { updateLastCallsUI(); } catch(e) {}
     const cc = document.getElementById('currentCall');
     if (cc) cc.textContent = '—';
+    const cb = document.getElementById('callCountBadge');
+    if (cb) cb.textContent = '0';
+    // ሙሉ በሙሉ ከጨዋታ UI ውጣ
+    const winnerBox = document.getElementById('winnerBox');
+    if (winnerBox) winnerBox.classList.add('hide');
+    const mainG = document.getElementById('mainGameSection');
+    if (mainG) mainG.classList.add('hide');
+    const cardSel = document.getElementById('cardSelectionSection');
+    if (cardSel) cardSel.classList.add('hide');
+    const cardsBox = document.getElementById('bingoCardsContainer');
+    if (cardsBox) { cardsBox.innerHTML = ''; cardsBox.className = 'cards-scroll-container'; }
     showPage('home');
     fetchLatestBalance();
 }
@@ -808,6 +888,9 @@ function renderAllBingoCards(){
     if(!container) return;
     container.innerHTML = "";
     cardNumbersMap = {};
+    // 1 ካርድ = normal size፣ 2-3 = scrollable grid
+    const n = (selectedCards || []).length;
+    container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi");
 
     selectedCards.forEach(cardNum => {
         cardNumbersMap[cardNum] = getServerCardNumbersJS(cardNum);
