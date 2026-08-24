@@ -871,6 +871,86 @@ async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = [f"• {a.get('name')} — <code>{a.get('telegram_id')}</code> (bal: {a.get('agent_balance', a.get('balance', 0))})" for a in agents]
     await update.message.reply_text("🤝 Agents:\n" + "\n".join(lines), parse_mode="HTML")
 
+async def cmd_addbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("ምሳሌ:\n/addbal 591234567 50")
+        return
+    tid = context.args[0].strip()
+    try:
+        amount = float(context.args[1])
+    except Exception:
+        await update.message.reply_text("መጠን ቁጥር መሆን አለበት")
+        return
+    if amount == 0:
+        await update.message.reply_text("መጠን 0 አይሆንም")
+        return
+    init_db()
+    if not get_player(tid):
+        players_col.update_one(
+            {"telegram_id": str(tid)},
+            {"$setOnInsert": {
+                "telegram_id": str(tid),
+                "name": f"User {tid}",
+                "balance": 0.0,
+                "bonus_balance": 0.0,
+                "history": []
+            }},
+            upsert=True
+        )
+    update_balance(tid, amount)
+    try:
+        players_col.update_one(
+            {"telegram_id": str(tid)},
+            {"$push": {"history": {
+                "type": "Admin Add" if amount > 0 else "Admin Sub",
+                "amount": abs(amount),
+                "status": "Completed",
+                "by": "admin"
+            }}}
+        )
+    except Exception:
+        pass
+    p = get_player(tid)
+    bal = float(p.get("balance") or 0) if p else 0
+    await update.message.reply_text(
+        f"✅ {'+' if amount > 0 else ''}{amount} ብር\nID: {tid}\nባላንስ: {bal} ብር"
+    )
+    try:
+        await context.bot.send_message(
+            chat_id=int(tid),
+            text=f"💰 አድሚን ባላንስ አስተካክሏል: {'+' if amount > 0 else ''}{amount} ብር\nባላንስ: {bal} ብር"
+        )
+    except Exception:
+        pass
+
+async def cmd_subbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("ምሳሌ:\n/subbal 591234567 20")
+        return
+    tid = context.args[0].strip()
+    try:
+        amount = abs(float(context.args[1]))
+    except Exception:
+        await update.message.reply_text("መጠን ቁጥር መሆን አለበት")
+        return
+    init_db()
+    p = get_player(tid)
+    if not p:
+        await update.message.reply_text("ተጫዋች አልተገኘም")
+        return
+    cur = float(p.get("balance") or 0)
+    if amount > cur:
+        amount = cur
+    # negative via update_balance
+    context.args = [tid, str(-amount)]
+    await cmd_addbal(update, context)
+
 # -------------------------------------------------------------
 # MAIN APP LAUNCH
 # -------------------------------------------------------------
@@ -903,6 +983,6 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
     app.add_handler(CommandHandler("addbal", cmd_addbal))
     app.add_handler(CommandHandler("subbal", cmd_subbal))
-    
+
     print("Bot is running with contact registration flow...")
     app.run_polling(bootstrap_retries=-1, poll_interval=1.0)
