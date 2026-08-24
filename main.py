@@ -901,6 +901,8 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(admin_approval, pattern="^(app_|rej_)"))
     app.add_handler(CallbackQueryHandler(buttons))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
-
+    app.add_handler(CommandHandler("addbal", cmd_addbal))
+    app.add_handler(CommandHandler("subbal", cmd_subbal))
+    
     print("Bot is running with contact registration flow...")
     app.run_polling(bootstrap_retries=-1, poll_interval=1.0)
