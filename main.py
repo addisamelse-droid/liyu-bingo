@@ -951,6 +951,33 @@ async def cmd_subbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.args = [tid, str(-amount)]
     await cmd_addbal(update, context)
 
+async def cmd_bal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args:
+        await update.message.reply_text("ምሳሌ: /bal 546786337")
+        return
+    tid = context.args[0].strip()
+    init_db()
+    p = get_player(tid)
+    if not p:
+        await update.message.reply_text("ተጫዋች አልተገኘም")
+        return
+    main = float(p.get("balance") or 0)
+    bonus = float(p.get("bonus_balance") or 0)
+    name = p.get("name") or "-"
+    phone = p.get("phone") or "-"
+    await update.message.reply_text(
+        f"👤 <b>{name}</b>\n"
+        f"ID: <code>{tid}</code>\n"
+        f"📞 {phone}\n"
+        f"💰 ዋና: <b>{main} ብር</b>\n"
+        f"🎁 ቦነስ: <b>{bonus} ብር</b>\n"
+        f"📊 ጠቅላላ: <b>{main + bonus} ብር</b>",
+        parse_mode="HTML"
+    )
+
 # -------------------------------------------------------------
 # MAIN APP LAUNCH
 # -------------------------------------------------------------
