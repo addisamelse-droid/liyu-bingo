@@ -716,7 +716,7 @@ async function login(){
         
         player = data.player;
         if (player && player.telegram_id) socket.emit('register_telegram_user', player.telegram_id);
-        document.getElementById("wallet").textContent = formatBal(player && player.balance);
+        document.getElementById("wallet").textContent = formatBal((player && (player.total_balance != null ? player.total_balance : ((player.balance||0)+(player.bonus_balance||0)))));
         updateProfileUI(player);
         if (player.is_agent) {
             const ab = document.getElementById('agentTabBtn');
@@ -1269,6 +1269,11 @@ socket.on('update_wallet', (bal) => {
 });
 
 socket.on('game_ended', (data) => {
+    // multi-winner: each prize message
+    if (data.winnerCount > 1 && data.prizeEach) {
+        data.message = (data.message || '') + ' (እያንዳንዱ ' + data.prizeEach + ' ብር)';
+    }
+
     const winnerBox = document.getElementById("winnerBox");
     const winnerDetails = document.getElementById("winnerDetails");
     const previewContainer = document.getElementById("winningCardPreview");
@@ -1422,7 +1427,11 @@ function calcWalletParts(p){
     return { bal, deposited, withdrawn, wins, invites, bonus, main: bal };
 }
 function fillWalletUI(p){
+    const main = parseFloat(p && p.balance) || 0;
+    const bonus = parseFloat(p && p.bonus_balance) || 0;
+    const total = (p && p.total_balance != null) ? parseFloat(p.total_balance) : (main + bonus);
     const x = calcWalletParts(p);
+    x.bal = total; x.main = main; x.bonus = bonus;
     const ids = {
         walletPageBal: x.bal, walletTotalBal: x.bal, walletMain: x.main,
         walletBonus: x.bonus, walletDep: x.deposited
@@ -1537,6 +1546,8 @@ async function loadAdminStats(){
         document.getElementById('admUsers').textContent = data.summary.totalUsers;
         document.getElementById('admAgents').textContent = data.summary.agentCount;
         document.getElementById('admTotalBal').textContent = fmtBr(data.summary.totalBalance);
+        const gInfo = document.getElementById('admGamesInfo');
+        if (gInfo) gInfo.textContent = 'ጨዋታዎች: ' + (data.summary.gamesTotal||0) + ' (ዛሬ: ' + (data.summary.gamesDaily||0) + ')';
         const labels = { daily:'📅 Daily', weekly:'📆 Weekly', monthly:'🗓️ Monthly', yearly:'📊 Yearly', all:'∞ All time' };
         let html = '';
         for (const key of ['daily','weekly','monthly','yearly','all']) {
@@ -1550,6 +1561,13 @@ async function loadAdminStats(){
               <div class="afro-stat-row"><span>🤝 Agent Comm.</span><b>Br ${fmtBr(p.commission)}</b></div>
               <div class="afro-stat-row" style="background:#e8f5e9;"><span>📈 Benefit</span><b style="color:#2e7d32;">Br ${fmtBr(p.benefit)}</b></div>
             </div>`;
+        }
+        if (data.recentGames && data.recentGames.length) {
+            html += '<div class="afro-card" style="margin-top:8px;"><div class="afro-label">🎮 የቅርብ ጨዋታዎች (Game ID)</div>';
+            data.recentGames.forEach(g => {
+                html += '<div class="afro-stat-row"><span>#'+g.gameId+' · '+g.stake+'ብር<br><small>'+(g.winners||'')+'</small></span><b>Br '+fmtBr(g.prizeTotal)+'</b></div>';
+            });
+            html += '</div>';
         }
         if (box) box.innerHTML = html;
     } catch(e) {
@@ -1584,7 +1602,10 @@ async function loadAgentDashboard(){
         document.getElementById('agentWd').textContent = fmtBr(data.stats.totalWithdraw);
         const botUser = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) ? '' : '';
         // link uses agent telegram id
-        document.getElementById('agentLink').textContent = 'https://t.me/' + ((window._botUsername)||'YourBot') + '?start=ag_' + player.telegram_id;
+        const botU = window._botUsername || '';
+        document.getElementById('agentLink').textContent = botU
+            ? ('https://t.me/' + botU + '?start=ag_' + player.telegram_id)
+            : ('Agent ID: ag_' + player.telegram_id + ' (BOT_USERNAME env አስገባ)');
         const list = document.getElementById('agentPlayerList');
         if (!data.players.length) list.innerHTML = '<p>ተጫዋች የለም</p>';
         else list.innerHTML = data.players.map(p =>
@@ -1668,6 +1689,9 @@ function playRecordedVoice(num){
     currentGameAudio.play().catch(e => console.log('Audio play error:', e));
 }
 
+fetch('/api/config').then(r=>r.json()).then(c=>{
+    if(c && c.botUsername) window._botUsername = c.botUsername;
+}).catch(()=>{});
 login();
 
 // Wallet በየ 3 ሰከንድ ያድሳል (Bot Deposit እንዲታይ)

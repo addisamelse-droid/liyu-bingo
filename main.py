@@ -175,7 +175,8 @@ def add_player(telegram_id, name, username, referred_by=0, phone=""):
             "name": name,
             "username": username or "",
             "phone": phone,
-            "balance": float(WELCOME_BONUS),
+            "balance": 0.0,
+            "bonus_balance": float(WELCOME_BONUS),
             "hasUsedBonus": False,
             "history": [],
             "referred_by": referred_by
@@ -221,26 +222,43 @@ def player_win_count(player):
             n += 1
     return n
 
+def playable_balance(player):
+    if not player:
+        return 0.0
+    return float(player.get("balance") or 0) + float(player.get("bonus_balance") or 0)
+
+def main_balance(player):
+    if not player:
+        return 0.0
+    return float(player.get("balance") or 0)
+
 def can_withdraw(player, amount):
-    """Returns (ok: bool, error_message: str)"""
-    bal = float(player.get("balance", 0) or 0) if player else 0.0
+    """Withdraw: Deposit ካደረጉ + ዋና balance ብቻ. ቦነስ/ቦነስ-win አይወጣም."""
+    bal_main = main_balance(player)
+    bal_bonus = float(player.get("bonus_balance") or 0) if player else 0.0
+    total = bal_main + bal_bonus
     amount = float(amount or 0)
+    if not player_has_deposit(player):
+        return False, (
+            "❌ <b>Withdraw ለማድረግ መጀመሪያ Deposit ማድረግ አለብዎት።</b>\n\n"
+            "🎁 በቦነስ ብቻ የተጫወቱ / ያሸነፉ ብር <b>ለጨዋታ ብቻ</b> ነው — withdraw አይቻልም።\n"
+            f"ቦነስ/ጨዋታ: <b>{bal_bonus} ብር</b> · ዋና: <b>{bal_main} ብር</b>"
+        )
     if amount < MIN_WITHDRAW:
         return False, f"⚠️ አነስተኛው withdraw <b>{MIN_WITHDRAW} ብር</b> ነው።"
-    if amount > bal:
-        return False, f"❌ ባላንስ በቂ አይደለም። (ባላንስ: {bal} ብር)"
-    if bal - amount < MIN_REMAIN:
-        return False, f"⚠️ ከ withdraw በኋላ ቢያንስ <b>{MIN_REMAIN} ብር</b> በ wallet መቆየት አለበት።\nከፍተኛው የሚወጣ: <b>{max(0, bal - MIN_REMAIN)} ብር</b>"
-    # Bonus only → 5 wins required; deposit ካለ ይፈቀዳል
-    if not player_has_deposit(player):
-        wins = player_win_count(player)
-        if wins < BONUS_WINS_REQUIRED:
-            return False, (
-                f"🎁 የ ቦነስ ገንዘብ ለማውጣት ቢያንስ <b>{BONUS_WINS_REQUIRED} ጨዋታ win</b> ያስፈልጋል።\n"
-                f"አሁን ያሸነፉት: <b>{wins}/{BONUS_WINS_REQUIRED}</b>\n"
-                f"ወይም Deposit ካደረጉ በኋላ win ካደረጉ withdraw ይችላሉ።"
-            )
+    if amount > bal_main + 1e-9:
+        return False, (
+            f"❌ Withdraw ከ <b>ዋና ሂሳብ</b> ብቻ ነው (Deposit በኋላ ያሸነፉ / Deposit)።\n"
+            f"ዋና: <b>{bal_main} ብር</b> · ቦነስ (ጨዋታ ብቻ): <b>{bal_bonus} ብር</b>"
+        )
+    if total - amount < MIN_REMAIN:
+        max_out = max(0, min(bal_main, total - MIN_REMAIN))
+        return False, (
+            f"⚠️ ከ withdraw በኋላ ቢያንስ <b>{MIN_REMAIN} ብር</b> መቆየት አለበት።\n"
+            f"ከፍተኛው: <b>{max_out} ብር</b>"
+        )
     return True, ""
+
 
 def extract_first_number(text):
     match = re.search(r'\b\d+(\.\d+)?\b', text)
@@ -261,6 +279,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['referred_by'] = int(arg0)
         elif str(arg0).startswith('ag_'):
             context.user_data['agent_id'] = str(arg0)[3:]
+            # same bot — አዲስ bot አይደለም
 
 
     if player and player.get("phone"):
@@ -309,7 +328,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎉 <b>ምዝገባዎ በስኬት ተጠናቋል!</b>
 
 📱 <b>ስልክ:</b> <code>{phone_number}</code>
-🎁 <b>የእንኳን ደህና መጣችሁ ቦነስ:</b> <b>{WELCOME_BONUS} ብር</b> ወደ አካውንትዎ ገብቷል!
+🎁 <b>የእንኳን ደህና መጣችሁ ቦነስ:</b> <b>{WELCOME_BONUS} ብር</b> (ለጨዋታ ብቻ — withdraw አይደለም)
 
 👇 ከታች ባለው ቁልፍ መጫወት መጀመር ይችላሉ፦
 """,
@@ -369,21 +388,23 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         context.user_data['action'] = 'waiting_withdraw'
-        wins = player_win_count(player)
+        bal_main = main_balance(player)
+        bal_bonus = float(player.get("bonus_balance") or 0) if player else 0.0
         has_dep = player_has_deposit(player)
-        max_out = max(0, bal - MIN_REMAIN)
+        max_out = max(0, min(bal_main, bal_main + bal_bonus - MIN_REMAIN)) if has_dep else 0
         rule = (
-            f"✅ Deposit አለዎት — win ካለ withdraw ይቻላል"
+            "✅ Deposit አለ — ዋና ሂሳብ withdraw ይቻላል"
             if has_dep else
-            f"🎁 ቦነስ: {wins}/{BONUS_WINS_REQUIRED} wins (5 win ያስፈልጋል)"
+            "❌ Deposit የለም — ቦነስ/win ለጨዋታ ብቻ (withdraw አይቻልም)"
         )
         await update.message.reply_text(
             f"""
 💸 <b>ብር ማውጫ</b>
 
-💰 <b>ባላንስ:</b> {bal} ብር
-📤 <b>ከፍተኛው:</b> {max_out} ብር (ቢያንስ {MIN_REMAIN} ብር ይቀራል)
-🔹 <b>አነስተኛ:</b> {MIN_WITHDRAW} ብር
+💰 ዋና (Withdraw): <b>{bal_main} ብር</b>
+🎁 ቦነስ/ቦነስ-win (ጨዋታ ብቻ): <b>{bal_bonus} ብር</b>
+📤 ከፍተኛው: <b>{max_out} ብር</b>
+🔹 አነስተኛ: <b>{MIN_WITHDRAW} ብር</b>
 📋 {rule}
 
 እባክዎ **መጠን + ቴሌብር/ሲቢኢ ቁጥር** ይላኩ።

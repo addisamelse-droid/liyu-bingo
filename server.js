@@ -19,9 +19,23 @@ const path = require('path');
 // 🟢 User Model ን ከ models/user.js መጥሪያ
 const User = require('./models/user');
 
+const gameHistorySchema = new mongoose.Schema({
+    gameId: Number,
+    stake: Number,
+    winners: [{ name: String, telegram_id: String, cards: [Number], prize: Number }],
+    prizeTotal: Number,
+    totalCards: Number,
+    at: { type: Date, default: Date.now }
+});
+const GameHistory = mongoose.models.GameHistory || mongoose.model('GameHistory', gameHistorySchema);
+
+
 // 🟢 Express Static Files & JSON Body Parser
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+app.get('/api/config', (req, res) => {
+    res.json({ ok: true, botUsername: BOT_USERNAME || null, webAppUrl: process.env.WEB_APP_URL || null });
+});
 
 // 🟢 🔊 የድምጽ (Sound) አቃፊ - ሁለት ቦታ ይመልከት
 app.use('/sounds', express.static(path.join(__dirname, 'sounds')));
@@ -54,8 +68,33 @@ mongoose.connect(mongoUrl)
 // 🟢 Telegram Bot Token እና Admin Chat ID
 const TELEGRAM_BOT_TOKEN = process.env.BOT_TOKEN || HARDCODED_BOT_TOKEN; 
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || HARDCODED_ADMIN_CHAT_ID;
+const BOT_USERNAME = (process.env.BOT_USERNAME || '').replace('@', '');
 
 // 🟢 ቁጥሩን አይቶ B, I, N, G, O የሚለውን ፊደል የሚመልስ Helper Function
+function userHasDeposit(user) {
+    if (!user || !user.history) return false;
+    return (user.history || []).some(h => h && h.type === 'Deposit' && (h.status === 'Approved' || h.status === 'Completed'));
+}
+function getPlayableBalance(user) {
+    return (Number(user.balance) || 0) + (Number(user.bonus_balance) || 0);
+}
+/** ካርድ ክፍያ: መጀመሪያ bonus_balance ከዛ balance */
+function deductPlayable(user, amount) {
+    amount = Number(amount) || 0;
+    let left = amount;
+    const bonus = Number(user.bonus_balance) || 0;
+    const fromBonus = Math.min(bonus, left);
+    user.bonus_balance = bonus - fromBonus;
+    left -= fromBonus;
+    if (left > 0) {
+        user.balance = (Number(user.balance) || 0) - left;
+    }
+    return amount;
+}
+function addRefundToBalance(user, amount) {
+    // refund ወደ ዋና balance (withdrawable) — ቀላልና ፍትሃዊ
+    user.balance = (Number(user.balance) || 0) + (Number(amount) || 0);
+}
 function histEntry(type, amount, extra = {}) {
     return {
         date: new Date().toLocaleString('en-GB', { hour12: false }),
@@ -109,7 +148,8 @@ app.post('/api/profile', async (req, res) => {
                 telegram_id: tid,
                 name: pName,
                 username: pUsername,
-                balance: 10,
+                balance: 0,
+                bonus_balance: 10,
                 hasUsedBonus: false,
                 history: [],
                 agent_id: agentRef
@@ -129,11 +169,14 @@ app.post('/api/profile', async (req, res) => {
                 name: user.name,
                 username: user.username,
                 phone: user.phone,
-                balance: user.balance,
+                balance: Number(user.balance) || 0,
+                bonus_balance: Number(user.bonus_balance) || 0,
+                total_balance: getPlayableBalance(user),
                 history: user.history || [],
                 is_agent: !!user.is_agent,
                 agent_id: user.agent_id || null,
                 agent_balance: user.agent_balance || 0,
+                wins_count: user.wins_count || 0,
                 is_admin: String(user.telegram_id) === String(ADMIN_CHAT_ID).trim()
             }
         });
@@ -425,6 +468,8 @@ function resetRoomState(stakeNum) {
     room.takenCards = [];
     room.drawnNumbers = [];
     room.isGameInProgress = false;
+    room.claimSettling = false;
+    room.pendingWinners = [];
     room.gameId++;
 
     if (room.drawInterval) {
@@ -846,9 +891,9 @@ io.on('connection', (socket) => {
         if (!user.history) user.history = [];
 
         if (player.cardNums.includes(cardNum)) {
-            // ካርድ ማስወገድ → ገንዘብ መመለስ
+            // ካርድ ማስወገድ → ገንዘብ መመለስ (ወደ balance)
             player.cardNums = player.cardNums.filter(c => c !== cardNum);
-            user.balance += stake;
+            addRefundToBalance(user, stake);
             user.history.unshift({
                 date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
                 type: 'Card Refund',
@@ -857,7 +902,7 @@ io.on('connection', (socket) => {
                 at: new Date()
             });
         } else {
-            if (user.balance < stake) {
+            if (getPlayableBalance(user) < stake) {
                 socket.emit('card_error', '⚠️ በቂ የብር መጠን የሎትም! እባክዎን አካውንትዎ ላይ ገንዘብ ያስገቡ (Deposit)።');
                 return;
             }
@@ -869,7 +914,7 @@ io.on('connection', (socket) => {
             
             player.cardNums.push(cardNum);
             player.telegram_id = tid || player.telegram_id || null;
-            user.balance -= stake;
+            deductPlayable(user, stake);
 
             user.history.unshift({
                 date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
@@ -913,7 +958,7 @@ io.on('connection', (socket) => {
         if (user.history.length > 30) user.history = user.history.slice(0, 30);
 
         await user.save();
-        socket.emit('update_wallet', user.balance);
+        socket.emit('update_wallet', getPlayableBalance(user));
         socket.emit('update_history', user.history);
 
         let allTaken = [];
@@ -946,15 +991,23 @@ io.on('connection', (socket) => {
         try {
             const stake = parseInt(data.stake) || socket.currentStake || 10;
             const room = rooms[stake];
-            
             if (!room) {
                 socket.emit('card_error', '❌ ክፍሉ አልተገኘም!');
                 return;
             }
+            // አንድ ጨዋታ አንድ ጊዜ ብቻ (double claim አይፍቀድ)
+            if (room.claimSettling) {
+                // በ claim window ውስጥ ተጨማሪ አሸናፊዎችን ሰብስብ
+            } else if (!room.isGameInProgress) {
+                socket.emit('card_error', '⚠️ ጨዋታው አልቋል!');
+                return;
+            }
 
             const player = room.players[socket.id];
-            const cardsToCheck = (player && player.cardNums && player.cardNums.length > 0) ? player.cardNums : [data.cardNum || 1];
-            
+            const cardsToCheck = (player && player.cardNums && player.cardNums.length > 0)
+                ? player.cardNums
+                : [data.cardNum || 1];
+
             let winningCardsForThisPlayer = [];
             cardsToCheck.forEach(cNum => {
                 if (verifyBingoWin(cNum, room.drawnNumbers)) {
@@ -967,60 +1020,134 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            const tid = (data.telegram_id || socket.telegramId || (player && player.telegram_id) || '').toString();
+            if (tid && !socket.telegramId) socket.telegramId = tid;
+            const user = await getUserData(socket.id, tid || socket.telegramId);
+            const playerName = (user && user.name) ? user.name : (player && player.playerName ? player.playerName : "ተጫዋች");
+
+            // Claim window — 1.5s ሁሉንም አሸናፊዎች ሰብስብ
+            if (!room.pendingWinners) room.pendingWinners = [];
+            // ተመሳሳይ telegram ሁለት ጊዜ አይግባ
+            if (room.pendingWinners.some(w => w.telegram_id && tid && String(w.telegram_id) === String(tid))) {
+                return;
+            }
+            room.pendingWinners.push({
+                socketId: socket.id,
+                telegram_id: tid,
+                name: playerName,
+                cards: winningCardsForThisPlayer
+            });
+
+            if (room.claimSettling) return;
+
+            room.claimSettling = true;
             if (room.drawInterval) {
                 clearInterval(room.drawInterval);
                 room.drawInterval = null;
             }
             room.isGameInProgress = false;
 
-            const totalCards = room.takenCards && room.takenCards.length > 0 ? room.takenCards.length : 1;
-            const prizeAmount = Math.floor(totalCards * room.stake * 0.8);
+            const settle = async () => {
+                try {
+                    const winners = (room.pendingWinners || []).slice();
+                    room.pendingWinners = [];
+                    room.claimSettling = false;
 
-            // telegram_id ከ data ወይም socket ውሰድ
-            const tid = (data.telegram_id || socket.telegramId || '').toString();
-            if (tid && !socket.telegramId) socket.telegramId = tid;
+                    const totalCards = room.takenCards && room.takenCards.length > 0 ? room.takenCards.length : 1;
+                    const prizeTotal = Math.floor(totalCards * room.stake * 0.8);
+                    const n = Math.max(winners.length, 1);
+                    const eachPrize = Math.floor(prizeTotal / n);
+                    const remainder = prizeTotal - eachPrize * n;
 
-            const user = await getUserData(socket.id, tid || socket.telegramId);
-            const playerName = (user && user.name) ? user.name : (player && player.playerName ? player.playerName : "ተጫዋች");
+                    for (let i = 0; i < winners.length; i++) {
+                        const w = winners[i];
+                        const prize = eachPrize + (i === 0 ? remainder : 0);
+                        w.prize = prize;
+                        if (!w.telegram_id) continue;
+                        const u = await User.findOne({ telegram_id: String(w.telegram_id) });
+                        if (!u) continue;
+                        // Deposit ካለ → balance (withdraw); ቦነስ ብቻ → bonus_balance (ጨዋታ ብቻ)
+                        u.wins_count = (Number(u.wins_count) || 0) + 1;
+                        if (userHasDeposit(u)) {
+                            u.balance = (Number(u.balance) || 0) + prize;
+                        } else {
+                            u.bonus_balance = (Number(u.bonus_balance) || 0) + prize;
+                        }
+                        if (!u.history) u.history = [];
+                        u.history.unshift({
+                            date: new Date().toLocaleString('en-GB', { hour12: false }),
+                            at: new Date(),
+                            type: 'Win',
+                            amount: prize,
+                            status: 'Completed',
+                            gameId: room.gameId,
+                            stake: room.stake
+                        });
+                        if (u.history.length > 40) u.history = u.history.slice(0, 40);
+                        await u.save();
+                        const totalBal = getPlayableBalance(u);
+                        io.to(`user_${u.telegram_id}`).emit('update_wallet', totalBal);
+                        io.to(`user_${u.telegram_id}`).emit('update_history', u.history);
+                    }
 
-            if (user) {
-                user.balance = (user.balance || 0) + prizeAmount;
-                if (!user.history) user.history = [];
-                
-                user.history.unshift({
-                    date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-                    type: 'Win', amount: prizeAmount, status: 'Completed', at: new Date()
-                });
+                    const names = winners.map(w => w.name).join(', ');
+                    const cardsTxt = winners.map(w => `#${(w.cards||[]).join(',')}`).join(' | ');
+                    const msg = winners.length > 1
+                        ? `🏆 አሸናፊዎች (${winners.length}): <b>${names}</b> — ሽልማት እኩል ${eachPrize} ብር`
+                        : `🏆 <b>${names}</b> (ካርዶች: <b>${cardsTxt}</b>) ቢንጎ አሸንፏል!`;
 
-                if (user.history.length > 30) user.history = user.history.slice(0, 30);
-                
-                await user.save();
+                    // አንድ ጊዜ ብቻ game_ended
+                    io.to(`room_${stake}`).emit('game_ended', {
+                        winnerName: names,
+                        winners: winners.map(w => ({
+                            name: w.name,
+                            telegram_id: w.telegram_id,
+                            cards: w.cards,
+                            prize: w.prize
+                        })),
+                        winningCards: winners.length === 1 ? winners[0].cards : winners.flatMap(w => w.cards || []),
+                        gameId: room.gameId,
+                        prizeAmount: prizeTotal,
+                        prizeEach: eachPrize,
+                        winnerCount: winners.length,
+                        message: msg
+                    });
 
-                socket.emit('update_wallet', user.balance);
-                socket.emit('update_history', user.history);
-                
-                // ለሁሉም የተጠቃሚው ሶኬቶችም አዘምን
-                io.to(`user_${user.telegram_id}`).emit('update_wallet', user.balance);
-                io.to(`user_${user.telegram_id}`).emit('update_history', user.history);
-            }
+                    // Save game history for admin
+                    try {
+                        await GameHistory.create({
+                            gameId: room.gameId,
+                            stake: room.stake,
+                            winners: winners.map(w => ({
+                                name: w.name,
+                                telegram_id: w.telegram_id,
+                                cards: w.cards,
+                                prize: w.prize
+                            })),
+                            prizeTotal,
+                            totalCards,
+                            at: new Date()
+                        });
+                    } catch (e) { console.error('GameHistory save', e); }
 
-            io.to(`room_${stake}`).emit('game_ended', {
-                winnerName: playerName,
-                winningCards: winningCardsForThisPlayer,
-                gameId: room.gameId,
-                prizeAmount: prizeAmount,
-                message: `🏆 <b>${playerName}</b> (ካርዶች: <b>#${winningCardsForThisPlayer.join(", ")}</b>) ቢንጎ አሸንፏል!`
-            });
+                    if (typeof sendTelegramNotification === 'function') {
+                        sendTelegramNotification(
+                            `🏆 <b>ቢንጎ</b>\n👥 ${names}\n💵 ጠቅላላ: <b>${prizeTotal} ብር</b>` +
+                            (winners.length > 1 ? ` (እያንዳንዱ ~${eachPrize})` : '') +
+                            `\n🎮 Room: ${stake} · Game ID: ${room.gameId}`
+                        );
+                    }
 
-            if (typeof sendTelegramNotification === 'function') {
-                sendTelegramNotification(`🏆 <b>ቢንጎ አሸናፊ!</b>\n\n👤 ስም: <b>${playerName}</b>\n💵 የሽልማት መጠን: <b>${prizeAmount} ብር</b>\n🎯 ካርዶች: #${winningCardsForThisPlayer.join(", ")}\n🎮 Room: ${stake} ብር`);
-            }
-
-            setTimeout(() => {
-                if (typeof resetRoomState === 'function') {
-                    resetRoomState(stake);
+                    setTimeout(() => {
+                        if (typeof resetRoomState === 'function') resetRoomState(stake);
+                    }, 10000);
+                } catch (err) {
+                    console.error('Settle winners error', err);
+                    room.claimSettling = false;
                 }
-            }, 10000);
+            };
+
+            setTimeout(settle, 1500);
 
         } catch (error) {
             console.error("Claim Bingo Server Error:", error);
@@ -1035,8 +1162,9 @@ io.on('connection', (socket) => {
             const player = room.players[socket.id];
 
             // ጨዋታ ከመጀመሩ በፊት ከወጣ → የካርዶቹን ገንዘብ መመለስ
-            if (player && player.cardNums && player.cardNums.length > 0 && !room.isGameInProgress) {
+            if (player && player.cardNums && player.cardNums.length > 0 && !room.isGameInProgress && !player.refunded) {
                 try {
+                    player.refunded = true;
                     const user = await getUserData(socket.id, socket.telegramId);
                     if (user) {
                         const refundAmount = player.cardNums.length * room.stake;
@@ -1044,6 +1172,7 @@ io.on('connection', (socket) => {
                         if (!user.history) user.history = [];
                         user.history.unshift({
                             date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                            at: new Date(),
                             type: 'Disconnect Refund',
                             amount: refundAmount,
                             status: 'Completed'
@@ -1207,14 +1336,30 @@ app.post('/api/admin/stats', async (req, res) => {
             p.commission = Math.round(p.commission * 100) / 100;
         }
 
+        let gamesTotal = 0, gamesDaily = 0, recentGames = [];
+        try {
+            gamesTotal = await GameHistory.countDocuments({});
+            gamesDaily = await GameHistory.countDocuments({ at: { $gte: startOfDay } });
+            recentGames = await GameHistory.find({}).sort({ at: -1 }).limit(15).lean();
+        } catch (e) {}
+
         res.json({
             ok: true,
             summary: {
                 totalUsers,
                 agentCount,
-                totalBalance: Math.round(totalBalance * 100) / 100
+                totalBalance: Math.round(totalBalance * 100) / 100,
+                gamesTotal,
+                gamesDaily
             },
-            periods
+            periods,
+            recentGames: (recentGames || []).map(g => ({
+                gameId: g.gameId,
+                stake: g.stake,
+                prizeTotal: g.prizeTotal,
+                winners: (g.winners || []).map(w => w.name).join(', '),
+                at: g.at
+            }))
         });
     } catch (e) {
         res.json({ ok: false, error: e.message });
