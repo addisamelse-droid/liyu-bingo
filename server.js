@@ -28,7 +28,7 @@ app.use('/sounds', express.static(path.join(__dirname, 'sounds')));
 app.use('/sounds', express.static(path.join(__dirname, 'public', 'sounds')));
 
 // 🟢 2. CONFIG - እዚህ የራስህን እሴቶች ማስገባት ትችላለህ (Render env ካለ ይመረጣል)
-const HARDCODED_MONGO_URI = "//addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0";       // ← MongoDB URLህን እዚህ ጻፍ
+const HARDCODED_MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0";       // ← MongoDB URLህን እዚህ ጻፍ
 const HARDCODED_BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0";       // ← Bot Tokenህን እዚህ ጻፍ
 const HARDCODED_ADMIN_CHAT_ID = "2134795751"; // ← Telegram IDህን እዚህ ጻፍ
 
@@ -56,6 +56,17 @@ const TELEGRAM_BOT_TOKEN = process.env.BOT_TOKEN || HARDCODED_BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || HARDCODED_ADMIN_CHAT_ID;
 
 // 🟢 ቁጥሩን አይቶ B, I, N, G, O የሚለውን ፊደል የሚመልስ Helper Function
+function histEntry(type, amount, extra = {}) {
+    return {
+        date: new Date().toLocaleString('en-GB', { hour12: false }),
+        at: new Date(),
+        type,
+        amount,
+        status: extra.status || 'Completed',
+        ...extra
+    };
+}
+
 function getBingoLetter(num) {
     if (num >= 1 && num <= 15) return 'B';
     if (num >= 16 && num <= 30) return 'I';
@@ -122,7 +133,8 @@ app.post('/api/profile', async (req, res) => {
                 history: user.history || [],
                 is_agent: !!user.is_agent,
                 agent_id: user.agent_id || null,
-                agent_balance: user.agent_balance || 0
+                agent_balance: user.agent_balance || 0,
+                is_admin: String(user.telegram_id) === String(ADMIN_CHAT_ID).trim()
             }
         });
     } catch (error) {
@@ -841,7 +853,8 @@ io.on('connection', (socket) => {
                 date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
                 type: 'Card Refund',
                 amount: stake,
-                status: 'Completed'
+                status: 'Completed',
+                at: new Date()
             });
         } else {
             if (user.balance < stake) {
@@ -862,7 +875,8 @@ io.on('connection', (socket) => {
                 date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
                 type: 'Card Buy',
                 amount: stake,
-                status: 'Completed'
+                status: 'Completed',
+                at: new Date()
             });
 
             if (!user.hasUsedBonus) {
@@ -884,7 +898,8 @@ io.on('connection', (socket) => {
                             amount: commission,
                             from: tid,
                             stake: stake,
-                            status: 'Completed'
+                            status: 'Completed',
+                            at: new Date()
                         });
                         if (agent.history.length > 50) agent.history = agent.history.slice(0, 50);
                         await agent.save();
@@ -974,9 +989,7 @@ io.on('connection', (socket) => {
                 
                 user.history.unshift({
                     date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-                    type: 'Win',
-                    amount: prizeAmount,
-                    status: 'Completed'
+                    type: 'Win', amount: prizeAmount, status: 'Completed', at: new Date()
                 });
 
                 if (user.history.length > 30) user.history = user.history.slice(0, 30);
@@ -1113,6 +1126,192 @@ app.post('/api/agent/dashboard', async (req, res) => {
             players: playerList,
             stats: { playerCount: players.length, totalDeposit, totalWithdraw, totalCommission }
         });
+    } catch (e) {
+        res.json({ ok: false, error: e.message });
+    }
+});
+
+
+app.post('/api/admin/stats', async (req, res) => {
+    try {
+        const adminId = String(req.body.admin_id || req.body.telegram_id || '');
+        if (!adminId || adminId !== String(ADMIN_CHAT_ID).trim()) {
+            return res.json({ ok: false, error: 'Admin ብቻ' });
+        }
+        const users = await User.find({}).select('history balance is_agent telegram_id name').lean();
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfWeek = new Date(startOfDay); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+        function inRange(d, from) {
+            if (!d) return false;
+            const t = new Date(d);
+            if (isNaN(t.getTime())) return false;
+            return t >= from && t <= now;
+        }
+
+        function empty() { return { deposit: 0, withdraw: 0, cardBuy: 0, win: 0, commission: 0, benefit: 0 }; }
+
+        const periods = {
+            daily: empty(),
+            weekly: empty(),
+            monthly: empty(),
+            yearly: empty(),
+            all: empty()
+        };
+
+        function addTo(period, key, amt) {
+            period[key] += Number(amt) || 0;
+        }
+
+        let totalUsers = users.length;
+        let totalBalance = 0;
+        let agentCount = 0;
+
+        for (const u of users) {
+            totalBalance += Number(u.balance) || 0;
+            if (u.is_agent) agentCount++;
+            for (const h of (u.history || [])) {
+                if (!h) continue;
+                const at = h.at || h.date || null;
+                const amt = Number(h.amount) || 0;
+                const type = h.type || '';
+                const status = h.status || '';
+
+                const buckets = [periods.all];
+                if (inRange(at, startOfDay)) buckets.push(periods.daily);
+                if (inRange(at, startOfWeek)) buckets.push(periods.weekly);
+                if (inRange(at, startOfMonth)) buckets.push(periods.monthly);
+                if (inRange(at, startOfYear)) buckets.push(periods.yearly);
+
+                for (const b of buckets) {
+                    if (type === 'Deposit' && (status === 'Approved' || status === 'Completed')) addTo(b, 'deposit', amt);
+                    if (type === 'Withdraw' && (status === 'Completed' || status === 'Approved')) addTo(b, 'withdraw', amt);
+                    if (type === 'Card Buy') addTo(b, 'cardBuy', amt);
+                    if (type === 'Win' || type === 'Prize') addTo(b, 'win', amt);
+                    if (type === 'Agent Commission') addTo(b, 'commission', amt);
+                }
+            }
+        }
+
+        for (const k of Object.keys(periods)) {
+            const p = periods[k];
+            // Benefit = house edge ≈ card buys - wins - commissions (approx)
+            p.benefit = Math.round((p.cardBuy - p.win - p.commission) * 100) / 100;
+            p.deposit = Math.round(p.deposit * 100) / 100;
+            p.withdraw = Math.round(p.withdraw * 100) / 100;
+            p.cardBuy = Math.round(p.cardBuy * 100) / 100;
+            p.win = Math.round(p.win * 100) / 100;
+            p.commission = Math.round(p.commission * 100) / 100;
+        }
+
+        res.json({
+            ok: true,
+            summary: {
+                totalUsers,
+                agentCount,
+                totalBalance: Math.round(totalBalance * 100) / 100
+            },
+            periods
+        });
+    } catch (e) {
+        res.json({ ok: false, error: e.message });
+    }
+});
+
+
+
+
+app.post('/api/admin/broadcast', async (req, res) => {
+    try {
+        const adminId = String(req.body.admin_id || req.body.telegram_id || '');
+        if (!adminId || adminId !== String(ADMIN_CHAT_ID).trim()) {
+            return res.json({ ok: false, error: 'Admin ብቻ' });
+        }
+        const message = String(req.body.message || '').trim();
+        if (!message) return res.json({ ok: false, error: 'መልእክት ባዶ ነው' });
+
+        const users = await User.find({}).select('telegram_id').lean();
+        let ok = 0, fail = 0;
+        const token = TELEGRAM_BOT_TOKEN;
+        if (!token || String(token).startsWith('YOUR_')) {
+            return res.json({ ok: false, error: 'BOT_TOKEN አልተሞላም' });
+        }
+
+        // sequential with small delay to avoid Telegram limits
+        for (const u of users) {
+            const tid = u.telegram_id;
+            if (!tid) { fail++; continue; }
+            try {
+                await new Promise((resolve) => {
+                    const payload = JSON.stringify({
+                        chat_id: tid,
+                        text: '📢 <b>ከ Liyu Bingo</b>\n\n' + message,
+                        parse_mode: 'HTML'
+                    });
+                    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+                    const r = https.request(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+                    }, (resp) => {
+                        resp.on('data', () => {});
+                        resp.on('end', () => {
+                            if (resp.statusCode >= 200 && resp.statusCode < 300) ok++;
+                            else fail++;
+                            resolve();
+                        });
+                    });
+                    r.on('error', () => { fail++; resolve(); });
+                    r.write(payload);
+                    r.end();
+                });
+                await new Promise(r => setTimeout(r, 35));
+            } catch (e) { fail++; }
+        }
+        res.json({ ok: true, sent: ok, failed: fail, total: users.length });
+    } catch (e) {
+        res.json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/admin/gift', async (req, res) => {
+    try {
+        const adminId = String(req.body.admin_id || req.body.telegram_id || '');
+        if (!adminId || adminId !== String(ADMIN_CHAT_ID).trim()) {
+            return res.json({ ok: false, error: 'Admin ብቻ' });
+        }
+        const target = String(req.body.target_id || '').trim();
+        const amount = parseFloat(req.body.amount);
+        if (!target || !(amount > 0)) {
+            return res.json({ ok: false, error: 'target_id እና amount ያስፈልጋል' });
+        }
+        let user = await User.findOne({ telegram_id: target });
+        if (!user) {
+            user = new User({
+                telegram_id: target,
+                name: req.body.name || ('User ' + target),
+                balance: 0,
+                history: []
+            });
+        }
+        user.balance = (user.balance || 0) + amount;
+        if (!user.history) user.history = [];
+        user.history.unshift({
+            type: 'Gift',
+            amount,
+            status: 'Completed',
+            at: new Date(),
+            by: 'admin',
+            date: new Date().toLocaleString('en-GB', { hour12: false })
+        });
+        if (user.history.length > 50) user.history = user.history.slice(0, 50);
+        await user.save();
+        try {
+            io.to('user_' + target).emit('update_wallet', user.balance);
+        } catch (e) {}
+        res.json({ ok: true, balance: user.balance, target });
     } catch (e) {
         res.json({ ok: false, error: e.message });
     }

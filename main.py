@@ -3,6 +3,7 @@
 # LIYU BINGO PRO - FULLY FIXED CODE
 # ===============================
 import os
+from datetime import datetime
 import re
 import pymongo
 from dotenv import load_dotenv
@@ -27,7 +28,7 @@ from telegram.ext import (
 # -------------------------------------------------------------
 # CONFIGURATION - እዚህ የራስህን እሴቶች አስገባ
 # -------------------------------------------------------------
-BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ"mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ
+BOT_TOKEN = "8722297780:AAFoDXr0L58fI4l0pDXsv4K6BLir1tR8mV0"          # ← የ Telegram Bot Tokenህን እዚህ ጻፍ
 MONGO_URI = "mongodb+srv://addisamelse_db_user:ab26032011@cluster0.itkanfk.mongodb.net/?appName=Cluster0"          # ← የ MongoDB URLህን እዚህ ጻፍ
 ADMIN_ID = "2134795751"           # ← የ Telegram IDህን እዚህ ጻፍ
 
@@ -620,7 +621,7 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mark_txn_used(txn_id, player_id, amount)
         players_col.update_one(
             {"telegram_id": str(player_id)},
-            {"$push": {"history": {"type": "Deposit", "amount": amount, "txn_id": txn_id or "", "status": "Approved"}}}
+            {"$push": {"history": {"type": "Deposit", "amount": amount, "txn_id": txn_id or "", "status": "Approved", "at": datetime.utcnow().isoformat()}}}
         )
         await query.edit_message_text(
             f"{old_text}\n\n✅ <b>ተፅድቋል! ({amount} ብር ተደምሯል)</b>"
@@ -662,17 +663,179 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def cmd_createagent(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_ID):
+
+
+
+async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /broadcast መልእክት — ለሁሉም ተጫዋቾች"""
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
         await update.message.reply_text("Admin ብቻ")
         return
-    if not context.args:
-        await update.message.reply_text("አጠቃቀም: /createagent TELEGRAM_ID")
+    text = " ".join(context.args).strip() if context.args else ""
+    if not text:
+        # if reply to a message, use that
+        if update.message.reply_to_message and update.message.reply_to_message.text:
+            text = update.message.reply_to_message.text
+        else:
+            await update.message.reply_text(
+                "አጠቃቀም:\n<code>/broadcast ሰላም ሁላችሁም!</code>\n"
+                "ወይም መልእክት ላይ Reply አድርገህ /broadcast",
+                parse_mode="HTML"
+            )
+            return
+    init_db()
+    users = list(players_col.find({}, {"telegram_id": 1}))
+    ok = 0
+    fail = 0
+    status = await update.message.reply_text(f"📤 በመላክ ላይ... (0/{len(users)})")
+    for i, u in enumerate(users):
+        tid = u.get("telegram_id")
+        if not tid:
+            fail += 1
+            continue
+        try:
+            await context.bot.send_message(
+                chat_id=int(tid),
+                text=f"📢 <b>ከ Liyu Bingo</b>\n\n{text}",
+                parse_mode="HTML"
+            )
+            ok += 1
+        except Exception:
+            fail += 1
+        if (i + 1) % 25 == 0:
+            try:
+                await status.edit_text(f"📤 በመላክ ላይ... ({i+1}/{len(users)})")
+            except Exception:
+                pass
+    await status.edit_text(f"✅ ተልኳል: {ok}\n❌ አልደረሰም: {fail}\n📊 ጠቅላላ: {len(users)}")
+
+async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /gift TELEGRAM_ID AMOUNT  — ያለ deposit ሂሳብ መሙላት"""
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
         return
-    aid = context.args[0].strip()
-    set_agent(aid, name=f"Agent {aid}")
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "አጠቃቀም:\n<code>/gift 591234567 100</code>\n"
+            "(ተጫዋች ID + የብር መጠን)",
+            parse_mode="HTML"
+        )
+        return
+    tid = context.args[0].strip()
+    try:
+        amount = float(context.args[1])
+    except Exception:
+        await update.message.reply_text("❌ መጠን ቁጥር መሆን አለበት")
+        return
+    if amount <= 0:
+        await update.message.reply_text("❌ መጠን ከ 0 በላይ ይሁን")
+        return
+    init_db()
+    player = get_player(tid)
+    if not player:
+        # create shell player
+        players_col.update_one(
+            {"telegram_id": str(tid)},
+            {"$setOnInsert": {
+                "telegram_id": str(tid),
+                "name": f"User {tid}",
+                "balance": 0.0,
+                "history": [],
+                "phone": ""
+            }},
+            upsert=True
+        )
+        player = get_player(tid)
+    update_balance(tid, amount)
+    players_col.update_one(
+        {"telegram_id": str(tid)},
+        {"$push": {"history": {
+            "type": "Gift",
+            "amount": amount,
+            "status": "Completed",
+            "at": datetime.utcnow().isoformat(),
+            "by": "admin"
+        }}}
+    )
+    new_bal = float(get_player(tid).get("balance") or 0)
+    try:
+        await context.bot.send_message(
+            chat_id=int(tid),
+            text=f"🎁 <b>Gift ተቀብለዋል!</b>\n+{amount} ብር\nባላንስ: <b>{new_bal} ብር</b>",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
     await update.message.reply_text(
-        f"✅ Agent ተፈጥሯል!\nID: <code>{aid}</code>\nLink: https://t.me/{(await context.bot.get_me()).username}?start=ag_{aid}",
+        f"✅ Gift ተልኳል!\nተጫዋች: <code>{tid}</code>\n+{amount} ብር\nባላንስ: <b>{new_bal} ብር</b>",
+        parse_mode="HTML"
+    )
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    init_db()
+    users = list(players_col.find({}))
+    dep = wd = buy = win = 0.0
+    for u in users:
+        for h in (u.get("history") or []):
+            if not h: continue
+            t = h.get("type")
+            a = float(h.get("amount") or 0)
+            st = h.get("status") or ""
+            if t == "Deposit" and st in ("Approved", "Completed"): dep += a
+            if t == "Withdraw" and st in ("Approved", "Completed"): wd += a
+            if t == "Card Buy": buy += a
+            if t in ("Win", "Prize"): win += a
+    benefit = buy - win
+    await update.message.reply_text(
+        f"📊 <b>Admin Stats (All)</b>\n"
+        f"Users: {len(users)}\n"
+        f"💵 Deposit: {dep:.2f} ብር\n"
+        f"📤 Withdraw: {wd:.2f} ብር\n"
+        f"🎫 Card Buy: {buy:.2f} ብር\n"
+        f"🏆 Wins: {win:.2f} ብር\n"
+        f"📈 Benefit: {benefit:.2f} ብር",
+        parse_mode="HTML"
+    )
+
+async def cmd_createagent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    if not ADMIN_ID or str(ADMIN_ID).strip() == "" or str(ADMIN_ID).startswith("YOUR_"):
+        await update.message.reply_text(
+            "❌ ADMIN_ID አልተሞላም!\nRailway/main.py ላይ ADMIN_ID አስገባ።\n"
+            f"የእርስዎ Telegram ID: <code>{uid}</code>",
+            parse_mode="HTML"
+        )
+        return
+    if uid != str(ADMIN_ID).strip():
+        await update.message.reply_text(
+            f"❌ Admin ብቻ ነው Agent የሚፈጥረው።\n"
+            f"የእርስዎ ID: <code>{uid}</code>\n"
+            f"የተመዘገበ ADMIN_ID: <code>{ADMIN_ID}</code>",
+            parse_mode="HTML"
+        )
+        return
+    if not context.args:
+        await update.message.reply_text(
+            f"አጠቃቀም:\n<code>/createagent {uid}</code>\n"
+            f"(ራስዎን agent ለማድረግ ወይም የሌላ ሰው ID)",
+            parse_mode="HTML"
+        )
+        return
+    aid = context.args[0].strip().replace("@", "")
+    if not aid.isdigit():
+        await update.message.reply_text("❌ Telegram ID ቁጥር መሆን አለበት (ምሳሌ: 591234567)")
+        return
+    set_agent(aid, name=f"Agent {aid}")
+    me = await context.bot.get_me()
+    uname = me.username or "YourBot"
+    await update.message.reply_text(
+        f"✅ Agent ተፈጥሯል!\n"
+        f"ID: <code>{aid}</code>\n"
+        f"Link:\nhttps://t.me/{uname}?start=ag_{aid}\n\n"
+        f"Agent Mini App ሲከፍት <b>Agent</b> tab ይታያል።",
         parse_mode="HTML"
     )
 
@@ -709,6 +872,10 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("createagent", cmd_createagent))
     app.add_handler(CommandHandler("agents", cmd_agents))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("gift", cmd_gift))
+    app.add_handler(CommandHandler("broadcast", cmd_broadcast))
+    app.add_handler(CommandHandler("msg", cmd_broadcast))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(CallbackQueryHandler(admin_approval, pattern="^(app_|rej_)"))
     app.add_handler(CallbackQueryHandler(buttons))

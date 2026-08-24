@@ -574,12 +574,38 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 </div>
 </section>
 
+
+<!-- ================= ADMIN PANEL ================= -->
+<section id="adminPage" class="page hide">
+<div class="afro-card">
+  <div class="afro-label">ADMIN PANEL</div>
+  <div style="font-size:13px;margin-top:6px;">Users: <b id="admUsers">0</b> · Agents: <b id="admAgents">0</b></div>
+  <div style="font-size:13px;">Total balances: Br <b id="admTotalBal">0</b></div>
+  <button class="afro-reload" type="button" onclick="loadAdminStats()" style="margin-top:8px;">↻ Refresh</button>
+</div>
+<div class="afro-card">
+  <div class="afro-label">🎁 GIFT (ያለ Deposit ሂሳብ መሙላት)</div>
+  <input id="giftTarget" type="text" placeholder="ተጫዋች Telegram ID" style="width:100%;padding:10px;border-radius:10px;border:1px solid #ce93d8;margin:6px 0;box-sizing:border-box;" />
+  <input id="giftAmount" type="number" placeholder="መጠን (ብር)" style="width:100%;padding:10px;border-radius:10px;border:1px solid #ce93d8;margin:6px 0;box-sizing:border-box;" />
+  <button class="btn" type="button" onclick="sendAdminGift()" style="margin:0;background:#2e7d32;">🎁 Gift ላክ</button>
+  <p id="giftMsg" style="font-size:12px;text-align:center;margin-top:6px;"></p>
+</div>
+<div class="afro-card">
+  <div class="afro-label">📢 መልእክት ለሁሉም ተጫዋቾች</div>
+  <textarea id="broadcastMsg" rows="3" placeholder="መልእክትዎን እዚህ ይጻፉ..." style="width:100%;padding:10px;border-radius:10px;border:1px solid #ce93d8;margin:6px 0;box-sizing:border-box;font-family:inherit;"></textarea>
+  <button class="btn" type="button" onclick="sendBroadcast()" style="margin:0;background:#1565c0;">📢 ለሁሉም ላክ</button>
+  <p id="broadcastStatus" style="font-size:12px;text-align:center;margin-top:6px;"></p>
+</div>
+<div id="adminStatsBox"></div>
+</section>
+
 <div class="tabs">
 <button type="button" onclick="showPage('home')">🎮<br>Game</button>
 <button type="button" onclick="showHistory()">🕘<br>History</button>
 <button type="button" onclick="showWalletPage()">💳<br>Wallet</button>
 <button type="button" onclick="showProfilePage()">👤<br>Profile</button>
 <button type="button" id="agentTabBtn" onclick="showAgentPage()" style="display:none;">🤝<br>Agent</button>
+<button type="button" id="adminTabBtn" onclick="showAdminPage()" style="display:none;">🛡️<br>Admin</button>
 </div>
 
 <script>
@@ -696,6 +722,10 @@ async function login(){
             const ab = document.getElementById('agentTabBtn');
             if (ab) ab.style.display = '';
         }
+        if (player.is_admin) {
+            const ad = document.getElementById('adminTabBtn');
+            if (ad) ad.style.display = '';
+        }
         
         document.getElementById("loginStatus").textContent = "✅ ገብተዋል";
         setTimeout(() => showPage("home"), 700);
@@ -734,7 +764,7 @@ function refreshWallet() {
 }
 
 function showPage(id){
-    ["login", "home", "game", "historyPage", "walletPage", "profilePage", "agentPage"].forEach(p => {
+    ["login", "home", "game", "historyPage", "walletPage", "profilePage", "agentPage", "adminPage"].forEach(p => {
         document.getElementById(p).classList.toggle("hide", p !== id);
     });
     if(id === 'home') {
@@ -1426,6 +1456,105 @@ function updateProfSound(){
     if(!b) return;
     b.textContent = voiceEnabled ? 'ON' : 'OFF';
     b.className = 'afro-toggle ' + (voiceEnabled ? 'on' : 'off');
+}
+
+
+
+
+async function sendBroadcast(){
+    const message = (document.getElementById('broadcastMsg')||{}).value;
+    const st = document.getElementById('broadcastStatus');
+    if (!player || !player.telegram_id) return;
+    if (!message || !String(message).trim()) {
+        if (st) st.textContent = 'መልእክት ይጻፉ';
+        return;
+    }
+    if (!confirm('ለሁሉም ተጫዋቾች ይላክ?')) return;
+    if (st) st.textContent = '📤 በመላክ ላይ... ትንሽ ይጠብቁ';
+    try {
+        const res = await fetch('/api/admin/broadcast', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ admin_id: player.telegram_id, message: String(message).trim() })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            if (st) st.textContent = data.error || 'Error';
+            return;
+        }
+        if (st) st.textContent = '✅ ተልኳል: ' + data.sent + ' · ❌ ' + data.failed + ' · ጠቅላላ: ' + data.total;
+        document.getElementById('broadcastMsg').value = '';
+    } catch(e) {
+        if (st) st.textContent = 'Error';
+    }
+}
+
+async function sendAdminGift(){
+    const target = (document.getElementById('giftTarget')||{}).value;
+    const amount = parseFloat((document.getElementById('giftAmount')||{}).value);
+    const msg = document.getElementById('giftMsg');
+    if (!player || !player.telegram_id) return;
+    if (!target || !(amount > 0)) {
+        if (msg) msg.textContent = 'ID እና መጠን ያስገቡ';
+        return;
+    }
+    if (msg) msg.textContent = 'በመላክ ላይ...';
+    try {
+        const res = await fetch('/api/admin/gift', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ admin_id: player.telegram_id, target_id: String(target).trim(), amount })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            if (msg) msg.textContent = data.error || 'Error';
+            return;
+        }
+        if (msg) msg.textContent = '✅ Gift ተልኳል! ባላንስ: ' + data.balance + ' ብር';
+        document.getElementById('giftAmount').value = '';
+        loadAdminStats();
+    } catch(e) {
+        if (msg) msg.textContent = 'Error';
+    }
+}
+
+function showAdminPage(){
+    showPage('adminPage');
+    loadAdminStats();
+}
+async function loadAdminStats(){
+    if (!player || !player.telegram_id) return;
+    const box = document.getElementById('adminStatsBox');
+    if (box) box.innerHTML = '<p style="text-align:center;">በመጫን ላይ...</p>';
+    try {
+        const res = await fetch('/api/admin/stats', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ admin_id: player.telegram_id, telegram_id: player.telegram_id })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            if (box) box.innerHTML = '<p style="color:red;">'+(data.error||'Error')+'</p>';
+            return;
+        }
+        document.getElementById('admUsers').textContent = data.summary.totalUsers;
+        document.getElementById('admAgents').textContent = data.summary.agentCount;
+        document.getElementById('admTotalBal').textContent = fmtBr(data.summary.totalBalance);
+        const labels = { daily:'📅 Daily', weekly:'📆 Weekly', monthly:'🗓️ Monthly', yearly:'📊 Yearly', all:'∞ All time' };
+        let html = '';
+        for (const key of ['daily','weekly','monthly','yearly','all']) {
+            const p = data.periods[key];
+            html += `<div class="afro-card" style="margin-top:8px;">
+              <div class="afro-label">${labels[key]}</div>
+              <div class="afro-stat-row"><span>💵 Deposit</span><b>Br ${fmtBr(p.deposit)}</b></div>
+              <div class="afro-stat-row"><span>📤 Withdraw</span><b>Br ${fmtBr(p.withdraw)}</b></div>
+              <div class="afro-stat-row"><span>🎫 Card Buy</span><b>Br ${fmtBr(p.cardBuy)}</b></div>
+              <div class="afro-stat-row"><span>🏆 Win Payout</span><b>Br ${fmtBr(p.win)}</b></div>
+              <div class="afro-stat-row"><span>🤝 Agent Comm.</span><b>Br ${fmtBr(p.commission)}</b></div>
+              <div class="afro-stat-row" style="background:#e8f5e9;"><span>📈 Benefit</span><b style="color:#2e7d32;">Br ${fmtBr(p.benefit)}</b></div>
+            </div>`;
+        }
+        if (box) box.innerHTML = html;
+    } catch(e) {
+        if (box) box.innerHTML = '<p>Error</p>';
+    }
 }
 
 function showAgentPage(){
