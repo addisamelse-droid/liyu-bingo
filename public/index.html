@@ -596,6 +596,12 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   <button class="btn" type="button" onclick="sendBroadcast()" style="margin:0;background:#1565c0;">📢 ለሁሉም ላክ</button>
   <p id="broadcastStatus" style="font-size:12px;text-align:center;margin-top:6px;"></p>
 </div>
+<div class="afro-card">
+  <div class="afro-label">👥 ተጫዋቾች (Profile / Wallet / Win / Deposit / Withdraw)</div>
+  <input id="adminFilterAgent" type="text" placeholder="Agent ID (ባዶ = ሁሉም)" style="width:100%;padding:8px;border-radius:10px;border:1px solid #ce93d8;margin:6px 0;box-sizing:border-box;" />
+  <button class="btn" type="button" onclick="loadAdminPlayers()" style="margin:0;">🔍 አሳይ</button>
+  <div id="adminPlayersBox" style="margin-top:8px;max-height:50vh;overflow-y:auto;font-size:12px;"></div>
+</div>
 <div id="adminStatsBox"></div>
 </section>
 
@@ -1528,7 +1534,48 @@ async function sendAdminGift(){
 function showAdminPage(){
     showPage('adminPage');
     loadAdminStats();
+    loadAdminPlayers();
 }
+
+async function loadAdminPlayers(){
+    const box = document.getElementById('adminPlayersBox');
+    if (!player || !player.telegram_id) return;
+    if (box) box.innerHTML = 'በመጫን ላይ...';
+    const agentFilter = (document.getElementById('adminFilterAgent')||{}).value || '';
+    try {
+        const res = await fetch('/api/admin/players', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                admin_id: player.telegram_id,
+                agent_id: agentFilter.trim() || null
+            })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            if (box) box.innerHTML = data.error || 'Error';
+            return;
+        }
+        if (!data.players.length) {
+            if (box) box.innerHTML = 'ተጫዋች የለም';
+            return;
+        }
+        let html = '';
+        data.players.forEach(p => {
+            html += `<div class="afro-card" style="margin:6px 0;padding:8px;">
+              <b>${p.name}</b> ${p.is_agent?'🤝':''}<br>
+              <small>ID: ${p.telegram_id} · ${p.phone||''}</small><br>
+              💰 ዋና: <b>${fmtBr(p.balance)}</b> · 🎁 ቦነስ: ${fmtBr(p.bonus_balance)} · ጠቅላላ: <b>${fmtBr(p.total)}</b><br>
+              💵 Deposit: ${fmtBr(p.deposit)} · 📤 Withdraw: ${fmtBr(p.withdraw)} · 🏆 Win: ${fmtBr(p.win)}<br>
+              🎫 Card: ${fmtBr(p.cardBuy)} · Wins#: ${p.wins_count}<br>
+              Agent: ${p.agent_id||'-'} · Status: ${p.status}
+            </div>`;
+        });
+        if (box) box.innerHTML = html;
+    } catch(e) {
+        if (box) box.innerHTML = 'Error';
+    }
+}
+
 async function loadAdminStats(){
     if (!player || !player.telegram_id) return;
     const box = document.getElementById('adminStatsBox');
@@ -1600,6 +1647,8 @@ async function loadAgentDashboard(){
         document.getElementById('agentPlayers').textContent = data.stats.playerCount;
         document.getElementById('agentDep').textContent = fmtBr(data.stats.totalDeposit);
         document.getElementById('agentWd').textContent = fmtBr(data.stats.totalWithdraw);
+        const winEl = document.getElementById('agentWinsTotal');
+        if (winEl) winEl.textContent = fmtBr(data.stats.totalWins || 0);
         const botUser = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) ? '' : '';
         // link uses agent telegram id
         if (data.referral_link) {
@@ -1613,9 +1662,20 @@ async function loadAgentDashboard(){
         }
         const list = document.getElementById('agentPlayerList');
         if (!data.players.length) list.innerHTML = '<p>ተጫዋች የለም</p>';
-        else list.innerHTML = data.players.map(p =>
-            `<div class="afro-stat-row"><span>${p.name||p.id}<br><small>${p.phone||''}</small></span><b>D:${fmtBr(p.deposit)} W:${fmtBr(p.withdraw)}</b></div>`
-        ).join('');
+        else list.innerHTML = data.players.map(p => {
+            const stDep = p.status && p.status.deposit === 'Pending' ? '⏳' : (p.deposit > 0 ? '✅' : '—');
+            const stWd = p.status && p.status.withdraw === 'Pending' ? '⏳' : (p.withdraw > 0 ? '✅' : '—');
+            const stWin = (p.win > 0) ? '🏆' : '—';
+            return `<div class="afro-card" style="margin:8px 0;padding:10px;text-align:left;">
+              <div style="font-weight:800;font-size:14px;">${p.name||p.id}</div>
+              <div style="font-size:11px;opacity:.85;">ID: ${p.id} · 📞 ${p.phone||'-'}</div>
+              <div class="afro-stat-row"><span>💰 Wallet</span><b>Br ${fmtBr(p.total_balance)} <small>(ዋና ${fmtBr(p.balance)} · ቦነስ ${fmtBr(p.bonus_balance)})</small></b></div>
+              <div class="afro-stat-row"><span>💵 Deposit ${stDep}</span><b>Br ${fmtBr(p.deposit)}${p.pendingDeposit? ' · ⏳'+fmtBr(p.pendingDeposit):''}</b></div>
+              <div class="afro-stat-row"><span>📤 Withdraw ${stWd}</span><b>Br ${fmtBr(p.withdraw)}${p.pendingWithdraw? ' · ⏳'+fmtBr(p.pendingWithdraw):''}</b></div>
+              <div class="afro-stat-row"><span>🏆 Win ${stWin}</span><b>Br ${fmtBr(p.win)} (${p.wins_count||0}×)</b></div>
+              <div class="afro-stat-row"><span>🎫 Card Buy</span><b>Br ${fmtBr(p.cardBuy||0)}</b></div>
+            </div>`;
+        }).join('');
     } catch(e) { console.log(e); }
 }
 
@@ -1712,4 +1772,4 @@ document.addEventListener('visibilitychange', () => {
 });
 </script>
 </body>
-</html>
+</html>d

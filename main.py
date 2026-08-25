@@ -233,22 +233,16 @@ def main_balance(player):
     return float(player.get("balance") or 0)
 
 def can_withdraw(player, amount):
-    """Withdraw: Deposit ካደረጉ + ዋና balance ብቻ. ቦነስ/ቦነስ-win አይወጣም."""
+    """Withdraw: ዋና balance (Win/Deposit/Gift). ቦነስ ጨዋታ ብቻ. Deposit አያስፈልግም."""
     bal_main = main_balance(player)
     bal_bonus = float(player.get("bonus_balance") or 0) if player else 0.0
     total = bal_main + bal_bonus
     amount = float(amount or 0)
-    if not player_has_deposit(player):
-        return False, (
-            "❌ <b>Withdraw ለማድረግ መጀመሪያ Deposit ማድረግ አለብዎት።</b>\n\n"
-            "🎁 በቦነስ ብቻ የተጫወቱ / ያሸነፉ ብር <b>ለጨዋታ ብቻ</b> ነው — withdraw አይቻልም።\n"
-            f"ቦነስ/ጨዋታ: <b>{bal_bonus} ብር</b> · ዋና: <b>{bal_main} ብር</b>"
-        )
     if amount < MIN_WITHDRAW:
         return False, f"⚠️ አነስተኛው withdraw <b>{MIN_WITHDRAW} ብር</b> ነው።"
     if amount > bal_main + 1e-9:
         return False, (
-            f"❌ Withdraw ከ <b>ዋና ሂሳብ</b> ብቻ ነው (Deposit በኋላ ያሸነፉ / Deposit)።\n"
+            f"❌ Withdraw ከ <b>ዋና ሂሳብ</b> ብቻ ነው (Win / Deposit)።\n"
             f"ዋና: <b>{bal_main} ብር</b> · ቦነስ (ጨዋታ ብቻ): <b>{bal_bonus} ብር</b>"
         )
     if total - amount < MIN_REMAIN:
@@ -390,19 +384,14 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data['action'] = 'waiting_withdraw'
         bal_main = main_balance(player)
         bal_bonus = float(player.get("bonus_balance") or 0) if player else 0.0
-        has_dep = player_has_deposit(player)
-        max_out = max(0, min(bal_main, bal_main + bal_bonus - MIN_REMAIN)) if has_dep else 0
-        rule = (
-            "✅ Deposit አለ — ዋና ሂሳብ withdraw ይቻላል"
-            if has_dep else
-            "❌ Deposit የለም — ቦነስ/win ለጨዋታ ብቻ (withdraw አይቻልም)"
-        )
+        max_out = max(0, min(bal_main, bal_main + bal_bonus - MIN_REMAIN))
+        rule = "✅ Win / Deposit ዋና ሂሳብ withdraw ይቻላል (ቦነስ ጨዋታ ብቻ)"
         await update.message.reply_text(
             f"""
 💸 <b>ብር ማውጫ</b>
 
 💰 ዋና (Withdraw): <b>{bal_main} ብር</b>
-🎁 ቦነስ/ቦነስ-win (ጨዋታ ብቻ): <b>{bal_bonus} ብር</b>
+🎁 ቦነስ (ጨዋታ ብቻ): <b>{bal_bonus} ብር</b>
 📤 ከፍተኛው: <b>{max_out} ብር</b>
 🔹 አነስተኛ: <b>{MIN_WITHDRAW} ብር</b>
 📋 {rule}
@@ -821,6 +810,123 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
+
+
+async def cmd_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /players  ወይም /players AGENT_ID"""
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    init_db()
+    agent_f = context.args[0].strip() if context.args else None
+    q = {"agent_id": agent_f} if agent_f else {}
+    users = list(players_col.find(q).sort("_id", -1).limit(30))
+    if not users:
+        await update.message.reply_text("ተጫዋች የለም")
+        return
+    lines = []
+    for u in users:
+        main = float(u.get("balance") or 0)
+        bonus = float(u.get("bonus_balance") or 0)
+        dep = wd = win = 0.0
+        for h in (u.get("history") or []):
+            if not h: continue
+            t = h.get("type"); a = float(h.get("amount") or 0); st = h.get("status") or ""
+            if t == "Deposit" and st in ("Approved", "Completed"): dep += a
+            if t == "Withdraw" and st in ("Approved", "Completed"): wd += a
+            if t in ("Win", "Prize"): win += a
+        lines.append(
+            f"• {u.get('name','-')} <code>{u.get('telegram_id')}</code>\n"
+            f"  💰{main}+🎁{bonus} | D:{dep} W:{wd} Win:{win} | ag:{u.get('agent_id') or '-'}"
+        )
+    text = "👥 <b>Players</b>\n" + "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+    await update.message.reply_text(text, parse_mode="HTML")
+
+async def cmd_bal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args:
+        await update.message.reply_text("ምሳሌ: /bal 546786337")
+        return
+    tid = context.args[0].strip()
+    init_db()
+    p = get_player(tid)
+    if not p:
+        await update.message.reply_text("ተጫዋች አልተገኘም")
+        return
+    main = float(p.get("balance") or 0)
+    bonus = float(p.get("bonus_balance") or 0)
+    await update.message.reply_text(
+        f"👤 {p.get('name', '-')}\nID: <code>{tid}</code>\n"
+        f"💰 ዋና: <b>{main}</b>\n🎁 ቦነስ: <b>{bonus}</b>\n📊 ጠቅላላ: <b>{main+bonus}</b>\n"
+        f"Agent: {p.get('agent_id') or '-'} | is_agent: {p.get('is_agent')}",
+        parse_mode="HTML"
+    )
+
+async def cmd_addbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("ምሳሌ: /addbal 546786337 100")
+        return
+    tid = context.args[0].strip()
+    try:
+        amount = float(str(context.args[1]).replace(",", ""))
+    except Exception:
+        await update.message.reply_text("መጠን ቁጥር መሆን አለበት")
+        return
+    if amount == 0:
+        await update.message.reply_text("መጠን 0 አይሆንም")
+        return
+    init_db()
+    if not get_player(tid):
+        players_col.update_one({"telegram_id": str(tid)}, {"$setOnInsert": {
+            "telegram_id": str(tid), "name": f"User {tid}", "balance": 0.0, "bonus_balance": 0.0, "history": []
+        }}, upsert=True)
+    update_balance(tid, amount)
+    bal = float((get_player(tid) or {}).get("balance") or 0)
+    await update.message.reply_text(f"✅ {'+' if amount>0 else ''}{amount} | ባላንስ: {bal}")
+    try:
+        await context.bot.send_message(int(tid), f"💰 አድሚን ባላንስ: {'+' if amount>0 else ''}{amount} ብር\nባላንስ: {bal} ብር")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ መልእክት አልደረሰም: {e}")
+
+async def cmd_subbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("ምሳሌ: /subbal 546786337 50")
+        return
+    tid = context.args[0].strip()
+    try:
+        amount = abs(float(str(context.args[1]).replace(",", "")))
+    except Exception:
+        await update.message.reply_text("መጠን ቁጥር መሆን አለበት")
+        return
+    init_db()
+    p = get_player(tid)
+    if not p:
+        await update.message.reply_text("ተጫዋች አልተገኘም")
+        return
+    cur = float(p.get("balance") or 0)
+    if cur <= 0:
+        await update.message.reply_text("ዋና ባላንስ 0 ነው")
+        return
+    if amount > cur:
+        amount = cur
+    update_balance(tid, -amount)
+    bal = float((get_player(tid) or {}).get("balance") or 0)
+    await update.message.reply_text(f"✅ -{amount} | ባላንስ: {bal}")
+    try:
+        await context.bot.send_message(int(tid), f"⚠️ አድሚን ባላንስ ቀንሷል: -{amount} ብር\nባላንስ: {bal} ብር")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ መልእክት አልደረሰም: {e}")
+
 async def cmd_createagent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     if not ADMIN_ID or str(ADMIN_ID).strip() == "" or str(ADMIN_ID).startswith("YOUR_"):
@@ -871,113 +977,6 @@ async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = [f"• {a.get('name')} — <code>{a.get('telegram_id')}</code> (bal: {a.get('agent_balance', a.get('balance', 0))})" for a in agents]
     await update.message.reply_text("🤝 Agents:\n" + "\n".join(lines), parse_mode="HTML")
 
-async def cmd_addbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_ID).strip():
-        await update.message.reply_text("Admin ብቻ")
-        return
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text("ምሳሌ:\n/addbal 591234567 50")
-        return
-    tid = context.args[0].strip()
-    try:
-        amount = float(context.args[1])
-    except Exception:
-        await update.message.reply_text("መጠን ቁጥር መሆን አለበት")
-        return
-    if amount == 0:
-        await update.message.reply_text("መጠን 0 አይሆንም")
-        return
-    init_db()
-    if not get_player(tid):
-        players_col.update_one(
-            {"telegram_id": str(tid)},
-            {"$setOnInsert": {
-                "telegram_id": str(tid),
-                "name": f"User {tid}",
-                "balance": 0.0,
-                "bonus_balance": 0.0,
-                "history": []
-            }},
-            upsert=True
-        )
-    update_balance(tid, amount)
-    try:
-        players_col.update_one(
-            {"telegram_id": str(tid)},
-            {"$push": {"history": {
-                "type": "Admin Add" if amount > 0 else "Admin Sub",
-                "amount": abs(amount),
-                "status": "Completed",
-                "by": "admin"
-            }}}
-        )
-    except Exception:
-        pass
-    p = get_player(tid)
-    bal = float(p.get("balance") or 0) if p else 0
-    await update.message.reply_text(
-        f"✅ {'+' if amount > 0 else ''}{amount} ብር\nID: {tid}\nባላንስ: {bal} ብር"
-    )
-    try:
-        await context.bot.send_message(
-            chat_id=int(tid),
-            text=f"💰 አድሚን ባላንስ አስተካክሏል: {'+' if amount > 0 else ''}{amount} ብር\nባላንስ: {bal} ብር"
-        )
-    except Exception:
-        pass
-
-async def cmd_subbal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_ID).strip():
-        await update.message.reply_text("Admin ብቻ")
-        return
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text("ምሳሌ:\n/subbal 591234567 20")
-        return
-    tid = context.args[0].strip()
-    try:
-        amount = abs(float(context.args[1]))
-    except Exception:
-        await update.message.reply_text("መጠን ቁጥር መሆን አለበት")
-        return
-    init_db()
-    p = get_player(tid)
-    if not p:
-        await update.message.reply_text("ተጫዋች አልተገኘም")
-        return
-    cur = float(p.get("balance") or 0)
-    if amount > cur:
-        amount = cur
-    # negative via update_balance
-    context.args = [tid, str(-amount)]
-    await cmd_addbal(update, context)
-
-async def cmd_bal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_ID).strip():
-        await update.message.reply_text("Admin ብቻ")
-        return
-    if not context.args:
-        await update.message.reply_text("ምሳሌ: /bal 546786337")
-        return
-    tid = context.args[0].strip()
-    init_db()
-    p = get_player(tid)
-    if not p:
-        await update.message.reply_text("ተጫዋች አልተገኘም")
-        return
-    main = float(p.get("balance") or 0)
-    bonus = float(p.get("bonus_balance") or 0)
-    name = p.get("name") or "-"
-    phone = p.get("phone") or "-"
-    await update.message.reply_text(
-        f"👤 <b>{name}</b>\n"
-        f"ID: <code>{tid}</code>\n"
-        f"📞 {phone}\n"
-        f"💰 ዋና: <b>{main} ብር</b>\n"
-        f"🎁 ቦነስ: <b>{bonus} ብር</b>\n"
-        f"📊 ጠቅላላ: <b>{main + bonus} ብር</b>",
-        parse_mode="HTML"
-    )
-
 # -------------------------------------------------------------
 # MAIN APP LAUNCH
 # -------------------------------------------------------------
@@ -1004,12 +1003,14 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("gift", cmd_gift))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CommandHandler("msg", cmd_broadcast))
+    app.add_handler(CommandHandler("bal", cmd_bal))
+    app.add_handler(CommandHandler("players", cmd_players))
+    app.add_handler(CommandHandler("addbal", cmd_addbal))
+    app.add_handler(CommandHandler("subbal", cmd_subbal))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(CallbackQueryHandler(admin_approval, pattern="^(app_|rej_)"))
     app.add_handler(CallbackQueryHandler(buttons))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
-    app.add_handler(CommandHandler("addbal", cmd_addbal))
-    app.add_handler(CommandHandler("subbal", cmd_subbal))
 
     print("Bot is running with contact registration flow...")
     app.run_polling(bootstrap_retries=-1, poll_interval=1.0)

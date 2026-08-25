@@ -959,14 +959,18 @@ io.on('connection', (socket) => {
                 user.hasUsedBonus = true; 
             }
 
-            // 🟢 Agent 10% commission ከ stake
+            // 🟢 Agent 10% — ካርድ ሲገዛ (10ብር→1, 20→2, 50→5)
             try {
                 if (user.agent_id) {
-                    const agent = await User.findOne({ telegram_id: String(user.agent_id), is_agent: true });
+                    let agent = await User.findOne({ telegram_id: String(user.agent_id) });
                     if (agent) {
+                        if (!agent.is_agent) {
+                            agent.is_agent = true;
+                            agent.role = 'agent';
+                        }
                         const commission = Math.round(stake * 0.10 * 100) / 100;
-                        agent.agent_balance = (agent.agent_balance || 0) + commission;
-                        agent.balance = (agent.balance || 0) + commission;
+                        agent.agent_balance = (Number(agent.agent_balance) || 0) + commission;
+                        agent.balance = (Number(agent.balance) || 0) + commission;
                         if (!agent.history) agent.history = [];
                         agent.history.unshift({
                             date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
@@ -979,7 +983,32 @@ io.on('connection', (socket) => {
                         });
                         if (agent.history.length > 50) agent.history = agent.history.slice(0, 50);
                         await agent.save();
-                        io.to(`user_${agent.telegram_id}`).emit('update_wallet', agent.balance);
+                        const agTotal = (Number(agent.balance)||0) + (Number(agent.bonus_balance)||0);
+                        io.to(`user_${agent.telegram_id}`).emit('update_wallet', agTotal);
+                        if (typeof sendTelegramNotification === 'function') {
+                            // optional: notify only agent via direct API
+                        }
+                        // መልእክት ለ Agent
+                        try {
+                            const token = process.env.BOT_TOKEN || TELEGRAM_BOT_TOKEN;
+                            if (token && !String(token).startsWith('YOUR_')) {
+                                const msg = `🤝 <b>Agent Commission</b>\n+${commission} ብር (${stake}×10%)\nከ ተጫዋች: ${tid}\nባላንስ: ${agent.balance} ብር`;
+                                const payload = JSON.stringify({
+                                    chat_id: agent.telegram_id,
+                                    text: msg.replace(/\\n/g, '\n'),
+                                    parse_mode: 'HTML'
+                                });
+                                const url = `https://api.telegram.org/bot${token}/sendMessage`;
+                                const req = https.request(url, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+                                }, (resp) => { resp.on('data', () => {}); });
+                                req.on('error', () => {});
+                                req.write(payload);
+                                req.end();
+                            }
+                        } catch (e2) {}
+                        console.log(`🤝 Agent ${agent.telegram_id} +${commission} from stake ${stake}`);
                     }
                 }
             } catch (e) { console.error('Agent commission error', e); }
@@ -1097,13 +1126,9 @@ io.on('connection', (socket) => {
                         if (!w.telegram_id) continue;
                         const u = await User.findOne({ telegram_id: String(w.telegram_id) });
                         if (!u) continue;
-                        // Deposit ካለ → balance (withdraw); ቦነስ ብቻ → bonus_balance (ጨዋታ ብቻ)
+                        // Win ሁልጊዜ ዋና balance → Withdraw ይቻላል (deposit አያስፈልግም)
                         u.wins_count = (Number(u.wins_count) || 0) + 1;
-                        if (userHasDeposit(u)) {
-                            u.balance = (Number(u.balance) || 0) + prize;
-                        } else {
-                            u.bonus_balance = (Number(u.bonus_balance) || 0) + prize;
-                        }
+                        u.balance = (Number(u.balance) || 0) + prize;
                         if (!u.history) u.history = [];
                         u.history.unshift({
                             date: new Date().toLocaleString('en-GB', { hour12: false }),
@@ -1266,16 +1291,56 @@ app.post('/api/agent/dashboard', async (req, res) => {
         if (!tid) return res.json({ ok: false, error: 'no id' });
         const agent = await User.findOne({ telegram_id: tid });
         if (!agent || !agent.is_agent) return res.json({ ok: false, error: 'agent አይደሉም' });
-        const players = await User.find({ agent_id: tid }).select('telegram_id name username phone balance history').lean();
-        let totalDeposit = 0, totalWithdraw = 0, totalCommission = 0;
+        const players = await User.find({ agent_id: tid }).select(
+            'telegram_id name username phone balance bonus_balance wins_count history'
+        ).lean();
+        let totalDeposit = 0, totalWithdraw = 0, totalCommission = 0, totalWins = 0;
         const playerList = players.map(p => {
-            let dep = 0, wd = 0;
+            let dep = 0, wd = 0, win = 0, cardBuy = 0;
+            let pendingDep = 0, pendingWd = 0;
+            let lastDep = null, lastWd = null, lastWin = null;
             (p.history || []).forEach(h => {
-                if (h.type === 'Deposit' && (h.status === 'Approved' || h.status === 'Completed')) dep += Number(h.amount)||0;
-                if (h.type === 'Withdraw' && (h.status === 'Completed' || h.status === 'Approved')) wd += Number(h.amount)||0;
+                if (!h) return;
+                const amt = Number(h.amount) || 0;
+                const st = h.status || '';
+                if (h.type === 'Deposit') {
+                    if (st === 'Approved' || st === 'Completed') { dep += amt; lastDep = h; }
+                    else if (st === 'Pending') pendingDep += amt;
+                }
+                if (h.type === 'Withdraw') {
+                    if (st === 'Completed' || st === 'Approved') { wd += amt; lastWd = h; }
+                    else if (st === 'Pending') pendingWd += amt;
+                }
+                if (h.type === 'Win' || h.type === 'Prize') { win += amt; lastWin = h; }
+                if (h.type === 'Card Buy') cardBuy += amt;
             });
-            totalDeposit += dep; totalWithdraw += wd;
-            return { id: p.telegram_id, name: p.name, username: p.username, phone: p.phone, balance: p.balance, deposit: dep, withdraw: wd };
+            totalDeposit += dep; totalWithdraw += wd; totalWins += win;
+            const main = Number(p.balance) || 0;
+            const bonus = Number(p.bonus_balance) || 0;
+            return {
+                id: p.telegram_id,
+                name: p.name || '-',
+                username: p.username || '',
+                phone: p.phone || '-',
+                balance: main,
+                bonus_balance: bonus,
+                total_balance: main + bonus,
+                wins_count: p.wins_count || 0,
+                deposit: dep,
+                withdraw: wd,
+                win: win,
+                cardBuy: cardBuy,
+                pendingDeposit: pendingDep,
+                pendingWithdraw: pendingWd,
+                status: {
+                    deposit: pendingDep > 0 ? 'Pending' : (dep > 0 ? 'OK' : 'None'),
+                    withdraw: pendingWd > 0 ? 'Pending' : (wd > 0 ? 'Done' : 'None'),
+                    win: win > 0 ? 'Has wins' : 'No wins'
+                },
+                lastDeposit: lastDep ? (lastDep.amount + ' · ' + (lastDep.date || lastDep.at || '')) : null,
+                lastWithdraw: lastWd ? (lastWd.amount + ' · ' + (lastWd.date || lastWd.at || '')) : null,
+                lastWin: lastWin ? (lastWin.amount + ' · ' + (lastWin.date || lastWin.at || '')) : null
+            };
         });
         (agent.history || []).forEach(h => {
             if (h.type === 'Agent Commission') totalCommission += Number(h.amount)||0;
@@ -1288,7 +1353,7 @@ app.post('/api/agent/dashboard', async (req, res) => {
             ok: true,
             agent: { name: agent.name, balance: agent.balance, agent_balance: agent.agent_balance || 0, totalCommission },
             players: playerList,
-            stats: { playerCount: players.length, totalDeposit, totalWithdraw, totalCommission },
+            stats: { playerCount: players.length, totalDeposit, totalWithdraw, totalCommission, totalWins },
             referral_link,
             botUsername: BOT_USERNAME || null
         });
@@ -1297,6 +1362,54 @@ app.post('/api/agent/dashboard', async (req, res) => {
     }
 });
 
+
+
+app.post('/api/admin/players', async (req, res) => {
+    try {
+        const adminId = String(req.body.admin_id || req.body.telegram_id || '');
+        if (!adminId || adminId !== String(ADMIN_CHAT_ID).trim()) {
+            return res.json({ ok: false, error: 'Admin ብቻ' });
+        }
+        const filterAgent = req.body.agent_id ? String(req.body.agent_id) : null;
+        const q = filterAgent ? { agent_id: filterAgent } : {};
+        const users = await User.find(q).sort({ _id: -1 }).limit(200).lean();
+        const list = users.map(u => {
+            let deposit = 0, withdraw = 0, win = 0, cardBuy = 0;
+            (u.history || []).forEach(h => {
+                if (!h) return;
+                const a = Number(h.amount) || 0;
+                const t = h.type || '';
+                const s = h.status || '';
+                if (t === 'Deposit' && (s === 'Approved' || s === 'Completed')) deposit += a;
+                if (t === 'Withdraw' && (s === 'Approved' || s === 'Completed')) withdraw += a;
+                if (t === 'Win' || t === 'Prize') win += a;
+                if (t === 'Card Buy') cardBuy += a;
+            });
+            const main = Number(u.balance) || 0;
+            const bonus = Number(u.bonus_balance) || 0;
+            return {
+                telegram_id: u.telegram_id,
+                name: u.name || '-',
+                username: u.username || '',
+                phone: u.phone || '',
+                balance: main,
+                bonus_balance: bonus,
+                total: main + bonus,
+                agent_id: u.agent_id || null,
+                is_agent: !!u.is_agent,
+                deposit,
+                withdraw,
+                win,
+                cardBuy,
+                wins_count: u.wins_count || 0,
+                status: main + bonus > 0 ? 'active' : 'empty'
+            };
+        });
+        res.json({ ok: true, count: list.length, players: list });
+    } catch (e) {
+        res.json({ ok: false, error: e.message });
+    }
+});
 
 app.post('/api/admin/stats', async (req, res) => {
     try {
