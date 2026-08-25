@@ -33,8 +33,13 @@ const GameHistory = mongoose.models.GameHistory || mongoose.model('GameHistory',
 // 🟢 Express Static Files & JSON Body Parser
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-app.get('/api/config', (req, res) => {
-    res.json({ ok: true, botUsername: BOT_USERNAME || null, webAppUrl: process.env.WEB_APP_URL || null });
+app.get('/api/config', async (req, res) => {
+    if (!BOT_USERNAME) await resolveBotUsername();
+    res.json({
+        ok: true,
+        botUsername: BOT_USERNAME || null,
+        webAppUrl: process.env.WEB_APP_URL || null
+    });
 });
 
 // 🟢 🔊 የድምጽ (Sound) አቃፊ - ሁለት ቦታ ይመልከት
@@ -68,7 +73,33 @@ mongoose.connect(mongoUrl)
 // 🟢 Telegram Bot Token እና Admin Chat ID
 const TELEGRAM_BOT_TOKEN = process.env.BOT_TOKEN || HARDCODED_BOT_TOKEN; 
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || HARDCODED_ADMIN_CHAT_ID;
-const BOT_USERNAME = (process.env.BOT_USERNAME || '').replace('@', '');
+let BOT_USERNAME = (process.env.BOT_USERNAME || '').replace('@', '');
+
+// Bot username ካልተሞላ → Telegram getMe ራስ-ሰር
+function resolveBotUsername() {
+    return new Promise((resolve) => {
+        if (BOT_USERNAME) return resolve(BOT_USERNAME);
+        const token = TELEGRAM_BOT_TOKEN;
+        if (!token || String(token).startsWith('YOUR_')) return resolve('');
+        const url = `https://api.telegram.org/bot${token}/getMe`;
+        https.get(url, (res) => {
+            let body = '';
+            res.on('data', (c) => body += c);
+            res.on('end', () => {
+                try {
+                    const j = JSON.parse(body);
+                    if (j.ok && j.result && j.result.username) {
+                        BOT_USERNAME = String(j.result.username).replace('@', '');
+                        console.log('✅ Bot username auto:', BOT_USERNAME);
+                    }
+                } catch (e) {}
+                resolve(BOT_USERNAME);
+            });
+        }).on('error', () => resolve(''));
+    });
+}
+// delay until TELEGRAM_BOT_TOKEN is defined - call after const TELEGRAM_BOT_TOKEN
+
 
 // 🟢 ቁጥሩን አይቶ B, I, N, G, O የሚለውን ፊደል የሚመልስ Helper Function
 function userHasDeposit(user) {
@@ -1249,11 +1280,17 @@ app.post('/api/agent/dashboard', async (req, res) => {
         (agent.history || []).forEach(h => {
             if (h.type === 'Agent Commission') totalCommission += Number(h.amount)||0;
         });
+        if (!BOT_USERNAME) await resolveBotUsername();
+        const referral_link = BOT_USERNAME
+            ? `https://t.me/${BOT_USERNAME}?start=ag_${tid}`
+            : '';
         res.json({
             ok: true,
             agent: { name: agent.name, balance: agent.balance, agent_balance: agent.agent_balance || 0, totalCommission },
             players: playerList,
-            stats: { playerCount: players.length, totalDeposit, totalWithdraw, totalCommission }
+            stats: { playerCount: players.length, totalDeposit, totalWithdraw, totalCommission },
+            referral_link,
+            botUsername: BOT_USERNAME || null
         });
     } catch (e) {
         res.json({ ok: false, error: e.message });
@@ -1487,4 +1524,8 @@ app.post('/api/admin/create_agent', async (req, res) => {
 
 http.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT}`);
+    resolveBotUsername().then((u) => {
+        if (u) console.log('✅ Agent links use: https://t.me/' + u + '?start=ag_ID');
+        else console.warn('⚠️ BOT_USERNAME empty — set env BOT_USERNAME or BOT_TOKEN for auto');
+    });
 });

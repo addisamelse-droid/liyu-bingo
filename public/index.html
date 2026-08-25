@@ -1602,10 +1602,15 @@ async function loadAgentDashboard(){
         document.getElementById('agentWd').textContent = fmtBr(data.stats.totalWithdraw);
         const botUser = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) ? '' : '';
         // link uses agent telegram id
-        const botU = window._botUsername || '';
-        document.getElementById('agentLink').textContent = botU
-            ? ('https://t.me/' + botU + '?start=ag_' + player.telegram_id)
-            : ('Agent ID: ag_' + player.telegram_id + ' (BOT_USERNAME env አስገባ)');
+        if (data.referral_link) {
+            document.getElementById('agentLink').textContent = data.referral_link;
+            if (data.botUsername) window._botUsername = data.botUsername;
+        } else {
+            const botU = window._botUsername || data.botUsername || '';
+            document.getElementById('agentLink').textContent = botU
+                ? ('https://t.me/' + botU + '?start=ag_' + player.telegram_id)
+                : ('https://t.me/YOUR_BOT?start=ag_' + player.telegram_id);
+        }
         const list = document.getElementById('agentPlayerList');
         if (!data.players.length) list.innerHTML = '<p>ተጫዋች የለም</p>';
         else list.innerHTML = data.players.map(p =>
