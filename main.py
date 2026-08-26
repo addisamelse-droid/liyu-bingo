@@ -54,7 +54,7 @@ REFERRAL_BONUS = 2.0
 WELCOME_BONUS = 10.0
 MIN_WITHDRAW = 50.0
 # True = Deposit ራስ-ሰር Approve (Txn ልዩ ከሆነ)
-AUTO_DEPOSIT_APPROVE = True
+AUTO_DEPOSIT_APPROVE = False
 MIN_REMAIN = 10.0
 BONUS_WINS_REQUIRED = 5
 
@@ -426,37 +426,77 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = update.message.text
     action = context.user_data.get('action')
 
-    # Admin / ማሳወቂያ: ባንክ SMS forward → pending deposit match → auto approve
-    if str(user.id) == str(ADMIN_ID).strip() or "transaction" in text.lower() or "telebirr" in text.lower() or "trx" in text.lower() or "txn" in text.lower():
+    # ========== ADMIN: Message/SMS → Deposit Approve ወይም Decline ==========
+    if str(user.id) == str(ADMIN_ID).strip() and text:
         sms_amount, sms_txn = parse_payment_sms(text)
+        # also try extract_txn if parse missed
+        if not sms_txn:
+            sms_txn = extract_txn_id(text)
+        if not sms_amount:
+            sms_amount = extract_first_number(text)
+
         if sms_txn:
             pending = find_pending_by_txn(sms_txn)
             if pending and pending.get("status") == "pending":
-                amt = float(pending.get("amount") or sms_amount or 0)
-                if sms_amount and abs(sms_amount - amt) > 0.01:
-                    # amount mismatch warning but still allow if admin
-                    if str(user.id) == str(ADMIN_ID).strip():
-                        amt = sms_amount
-                    else:
-                        await update.message.reply_text(
-                            f"⚠️ Txn ተገኝቷል ግን መጠን አይመሳሰልም (ጥያቄ: {pending.get('amount')} / SMS: {sms_amount})",
-                            reply_markup=get_persistent_keyboard()
+                pend_amt = float(pending.get("amount") or 0)
+                # መጠን ተመሳሳይ (ወይም SMS ላይ መጠን ከሌለ pending ተጠቀም)
+                if sms_amount and pend_amt and abs(float(sms_amount) - pend_amt) > 0.5:
+                    # Decline — መጠን አይመሳሰልም
+                    get_pending_deposits_col().update_one(
+                        {"txn_id": str(sms_txn).upper()},
+                        {"$set": {"status": "declined", "reason": "amount_mismatch"}}
+                    )
+                    await update.message.reply_text(
+                        f"❌ <b>Decline</b> — መጠን አይመሳሰልም\n"
+                        f"Txn: <code>{sms_txn}</code>\n"
+                        f"ጥያቄ: {pend_amt} ብር · SMS: {sms_amount} ብር",
+                        parse_mode="HTML"
+                    )
+                    try:
+                        await context.bot.send_message(
+                            chat_id=int(pending["telegram_id"]),
+                            text=f"❌ Deposit ውድቅ ተደረገ (መጠን አይመሳሰልም).\nTxn: {sms_txn}"
                         )
-                        return
+                    except Exception:
+                        pass
+                    return
+
+                amt = pend_amt if pend_amt > 0 else float(sms_amount or 0)
                 pid = pending.get("telegram_id")
-                ok, result = complete_deposit(pid, amt, sms_txn, source="sms_match")
+                ok, result = complete_deposit(pid, amt, sms_txn, source="admin_sms")
                 if ok:
                     await update.message.reply_text(
-                        f"✅ Deposit ተረጋገጠ (SMS match)\\nID: {pid}\\n+{amt} ብር\\nTxn: {sms_txn}\\nባላንስ: {result}"
+                        f"✅ <b>Approve</b> (ከ Message)\n"
+                        f"ID: <code>{pid}</code>\n"
+                        f"+{amt} ብር · Txn: <code>{sms_txn}</code>\n"
+                        f"ባላንስ: <b>{result}</b>",
+                        parse_mode="HTML"
                     )
                     try:
                         await context.bot.send_message(
                             chat_id=int(pid),
-                            text=f"✅ <b>Deposit ተረጋገጠ!</b>\\n💵 +{amt} ብር\\n🔢 <code>{sms_txn}</code>\\n💰 ባላንስ: <b>{result}</b>",
+                            text=(
+                                f"✅ <b>Deposit ተፅድቋል!</b>\n"
+                                f"💵 +{amt} ብር\n"
+                                f"🔢 <code>{sms_txn}</code>\n"
+                                f"💰 ባላንስ: <b>{result}</b>"
+                            ),
                             parse_mode="HTML"
                         )
                     except Exception:
                         pass
+                    return
+                else:
+                    await update.message.reply_text(f"❌ {result}")
+                    return
+            else:
+                # Txn አለ ግን pending የለም
+                if any(k in text.lower() for k in ("txn", "trx", "transaction", "telebirr", "etb", "birr", "ብር")):
+                    await update.message.reply_text(
+                        f"⚠️ Txn <code>{sms_txn}</code> ተገኝቷል ግን pending deposit የለም.\n"
+                        f"ተጫዋቹ መጀመሪያ bot ላይ መጠን+Txn መላክ አለበት።",
+                        parse_mode="HTML"
+                    )
                     return
 
     player = get_player(user.id)
@@ -482,8 +522,10 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 👤 <b>ስም:</b> {ACCOUNT_NAME}
 
 ከከፈሉ በኋላ፡
-<b>የብር መጠን + Transaction ID</b> አብረው ይላኩ።
+<b>የብር መጠን + Transaction ID</b> (ወይም ሙሉ SMS) ይላኩ።
 <i>ምሳሌ፡ 100 TXN123456</i>
+
+⚠️ ባላንስ የሚጨምረው Admin <b>ገንዘቡ መግባቱን ካረጋገጠ</b> በኋላ ብቻ ነው።
 """,
             parse_mode="HTML",
             reply_markup=get_persistent_keyboard()
@@ -647,6 +689,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         save_pending_deposit(user.id, parsed_amount, txn_id, text, user.first_name)
 
+        # ገንዘብ ሳይረጋገጥ አይጨምርም — True ማድረግ አደገኛ ነው
         if AUTO_DEPOSIT_APPROVE:
             ok, result = complete_deposit(user.id, parsed_amount, txn_id, source="player_sms_auto")
             if not ok:
