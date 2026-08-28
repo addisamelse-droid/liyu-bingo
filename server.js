@@ -482,6 +482,63 @@ function hasNewPatternCompletedByLast(cardNumbers, drawn) {
     return false;
 }
 
+
+// Ethiopian filler bot names — ከ 10 ተጫዋች በታች ሲሆን 5 ካርድ
+const BOT_NAMES = [
+    'Abebe', 'Fayisa', 'Abedla', 'Biruk', 'Eyob',
+    'Kidist', 'Hanna', 'Samuel', 'Meron', 'Dawit',
+    'Tigist', 'Yonas', 'Selam', 'Nahom', 'Liya'
+];
+
+function countRealPlayers(room) {
+    if (!room || !room.players) return 0;
+    return Object.values(room.players).filter(
+        p => p && p.cardNums && p.cardNums.length > 0 && !p.isBot
+    ).length;
+}
+
+function fillBotCards(room, stakeNum) {
+    // አስቀድሞ ያሉ bots አጽዳ
+    Object.keys(room.players).forEach(id => {
+        if (room.players[id] && room.players[id].isBot) {
+            delete room.players[id];
+        }
+    });
+    let allTaken = [];
+    Object.values(room.players).forEach(p => {
+        allTaken = allTaken.concat(p.cardNums || []);
+    });
+    room.takenCards = allTaken.slice();
+
+    const realCount = countRealPlayers(room);
+    if (realCount >= 10) return; // በቂ እውነተኛ ተጫዋች
+
+    const needCards = 5;
+    const freeNums = [];
+    for (let n = 1; n <= 100; n++) {
+        if (!room.takenCards.includes(n)) freeNums.push(n);
+    }
+    // shuffle free
+    for (let i = freeNums.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [freeNums[i], freeNums[j]] = [freeNums[j], freeNums[i]];
+    }
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    const pick = freeNums.slice(0, needCards);
+    pick.forEach((cardNum, idx) => {
+        const botId = `bot_${stakeNum}_${cardNum}_${Date.now()}_${idx}`;
+        room.players[botId] = {
+            playerName: names[idx % names.length],
+            cardNums: [cardNum],
+            isBot: true,
+            telegram_id: null
+        };
+        room.takenCards.push(cardNum);
+    });
+    console.log(`🤖 Room ${stakeNum}: ${realCount} real players → filled ${pick.length} bot cards`);
+}
+
+
 function getActivePlayerCount(room) {
     if (!room || !room.players) return 0;
     const activePlayers = Object.values(room.players).filter(p => p.cardNums && p.cardNums.length > 0);
@@ -493,7 +550,11 @@ function resetRoomState(stakeNum) {
     if (!room) return;
 
     Object.keys(room.players).forEach(pId => {
-        if (room.players[pId]) room.players[pId].cardNums = [];
+        if (room.players[pId] && room.players[pId].isBot) {
+            delete room.players[pId];
+        } else if (room.players[pId]) {
+            room.players[pId].cardNums = [];
+        }
     });
     
     room.takenCards = [];
@@ -572,15 +633,26 @@ function startRoomGame(stake) {
         room.timerInterval = null;
     }
 
+    // ከ 10 እውነተኛ ተጫዋች በታች → 5 bot ካርድ (Abebe, Fayisa, ...)
+    try {
+        fillBotCards(room, stakeNum);
+        io.to(`room_${stakeNum}`).emit('update_taken_cards', room.takenCards);
+    } catch (e) { console.error('fillBotCards', e); }
+
     room.isGameInProgress = true;
     room.drawnNumbers = [];
+    room.claimSettling = false;
+    room.pendingWinners = [];
 
     const totalCardsBought = room.takenCards.length;
     const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
+    const realP = countRealPlayers(room);
 
     io.to(`room_${stakeNum}`).emit('game_started', { 
         gameId: room.gameId,
-        prizePool: prizePool
+        prizePool: prizePool,
+        playerCount: realP,
+        totalCards: totalCardsBought
     });
 
     room.drawInterval = setInterval(() => {
@@ -625,6 +697,40 @@ function startRoomGame(stake) {
             calledCount: room.drawnNumbers.length,
             drawnNumbers: room.drawnNumbers
         });
+
+        // Bot auto-win: ካርድ ማሸነፊያ ከሆነ በ bot ስም
+        try {
+            if (!room.claimSettling) {
+                for (const [pid, pl] of Object.entries(room.players)) {
+                    if (!pl || !pl.isBot || !pl.cardNums) continue;
+                    for (const cNum of pl.cardNums) {
+                        if (verifyBingoWin(cNum, room.drawnNumbers)) {
+                            room.claimSettling = true;
+                            if (room.drawInterval) {
+                                clearInterval(room.drawInterval);
+                                room.drawInterval = null;
+                            }
+                            room.isGameInProgress = false;
+                            const totalCards = room.takenCards.length || 1;
+                            const prizeTotal = Math.floor(totalCards * room.stake * 0.8);
+                            const botName = pl.playerName || 'Abebe';
+                            io.to(`room_${stakeNum}`).emit('game_ended', {
+                                winnerName: botName,
+                                winningCards: [cNum],
+                                gameId: room.gameId,
+                                prizeAmount: prizeTotal,
+                                winnerCount: 1,
+                                isBot: true,
+                                message: `🏆 <b>${botName}</b> (ካርድ #${cNum}) ቢንጎ አሸንፏል!`
+                            });
+                            setTimeout(() => resetRoomState(stakeNum), 10000);
+                            return;
+                        }
+                    }
+                }
+            }
+        } catch (e) { console.error('bot win check', e); }
+
 
     }, 3000);
 }

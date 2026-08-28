@@ -374,6 +374,15 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   #bingoCardsContainer.cards-multi{grid-template-columns:1fr!important;max-height:36vh!important;}
 }
 
+
+/* full mobile board stretch equal cells */
+.afro-board,.numbers-container,.afro-play{width:100%!important;max-width:100%!important;}
+.afro-play{grid-template-columns:1.2fr 0.9fr!important;min-height:min(70vh,620px)!important;}
+.afro-board .numbers-col span{flex:1 1 auto!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:clamp(18px,3.2vh,28px)!important;font-size:clamp(10px,2.8vw,14px)!important;border-radius:6px!important;}
+.afro-board .numbers-col{gap:3px!important;}
+.afro-bingo-letters .bl{font-size:clamp(12px,3vw,16px)!important;padding:6px 0!important;}
+.cards-scroll-container .bingo div,.cards-2col .bingo div{aspect-ratio:1!important;display:flex!important;align-items:center;justify-content:center;font-size:clamp(10px,2.6vw,14px)!important;padding:2px!important;}
+
 </style>
 </head>
 <body>

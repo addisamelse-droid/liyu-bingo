@@ -52,8 +52,9 @@ ACCOUNT_NAME = "ABRHAM MULU"
 CARD_PRICE = "10, 20, 50"
 REFERRAL_BONUS = 2.0
 WELCOME_BONUS = 10.0
+FIRST_DEPOSIT_BONUS_PCT = 0.20  # የመጀመሪያ deposit ብቻ +20% (withdraw አይደለም)
 MIN_WITHDRAW = 50.0
-MIN_REMAIN = 10.0
+MIN_REMAIN = 0.0  # ቀሪ 0 ድረስ withdraw ይቻላል
 BONUS_WINS_REQUIRED = 5
 
 BOT_NAME = "Liyu Bingo"
@@ -254,6 +255,48 @@ def can_withdraw(player, amount):
     return True, ""
 
 
+
+def apply_deposit_with_first_bonus(telegram_id, amount, txn_id=""):
+    """Deposit + የመጀመሪያ ጊዜ ብቻ 20% ወደ bonus_balance (withdraw አይደለም)"""
+    init_db()
+    p = get_player(telegram_id)
+    amount = float(amount)
+    is_first = not player_has_deposit(p)
+    update_balance(telegram_id, amount)
+    bonus_extra = 0.0
+    if is_first and amount > 0:
+        bonus_extra = round(amount * float(FIRST_DEPOSIT_BONUS_PCT), 2)
+        players_col.update_one(
+            {"telegram_id": str(telegram_id)},
+            {"$inc": {"bonus_balance": bonus_extra},
+             "$set": {"first_deposit_done": True}}
+        )
+    hist = {
+        "type": "Deposit",
+        "amount": amount,
+        "txn_id": txn_id or "",
+        "status": "Approved",
+        "at": datetime.utcnow().isoformat()
+    }
+    players_col.update_one(
+        {"telegram_id": str(telegram_id)},
+        {"$push": {"history": hist}}
+    )
+    if bonus_extra > 0:
+        players_col.update_one(
+            {"telegram_id": str(telegram_id)},
+            {"$push": {"history": {
+                "type": "First Deposit Bonus",
+                "amount": bonus_extra,
+                "status": "Completed",
+                "at": datetime.utcnow().isoformat(),
+                "note": "20% — ጨዋታ ብቻ / withdraw አይደለም"
+            }}}
+        )
+    p2 = get_player(telegram_id)
+    return p2, bonus_extra
+
+
 def extract_first_number(text):
     match = re.search(r'\b\d+(\.\d+)?\b', text)
     if match:
@@ -371,10 +414,10 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 2. Withdraw
     elif "ብር ማውጫ" in text or "Withdraw" in text:
         bal = player.get("balance", 0.0) if player else 0.0
-        if bal < MIN_WITHDRAW + MIN_REMAIN:
+        if bal < MIN_WITHDRAW:
             await update.message.reply_text(
-                f"⚠️ Withdraw ለማድረግ ቢያንስ <b>{MIN_WITHDRAW + MIN_REMAIN} ብር</b> ያስፈልጋል "
-                f"(min {MIN_WITHDRAW} + በ wallet የሚቀር {MIN_REMAIN})።\n\n"
+                f"⚠️ Withdraw ለማድረግ ቢያንስ <b>{MIN_WITHDRAW} ብር</b> ያስፈልጋል "
+                f"(አነስተኛ {MIN_WITHDRAW} ብር)።\n\n"
                 f"ባላንስዎ: <b>{bal} ብር</b>",
                 parse_mode="HTML",
                 reply_markup=get_persistent_keyboard()
@@ -384,7 +427,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data['action'] = 'waiting_withdraw'
         bal_main = main_balance(player)
         bal_bonus = float(player.get("bonus_balance") or 0) if player else 0.0
-        max_out = max(0, min(bal_main, bal_main + bal_bonus - MIN_REMAIN))
+        max_out = max(0, bal_main)  # ቀሪ 0 ድረስ
         rule = "✅ Win / Deposit ዋና ሂሳብ withdraw ይቻላል (ቦነስ ጨዋታ ብቻ)"
         await update.message.reply_text(
             f"""
@@ -623,24 +666,19 @@ async def admin_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txn_id = data[4] if len(data) > 4 else None
 
         if txn_id and is_txn_used(txn_id):
-            await query.answer("⚠️ ይህ Transaction አስቀድሞ ተጠቅሟል!", show_alert=True)
+            await query.answer("Txn already used!", show_alert=True)
             return
-
-        update_balance(player_id, amount)
         if txn_id:
             mark_txn_used(txn_id, player_id, amount)
-        players_col.update_one(
-            {"telegram_id": str(player_id)},
-            {"$push": {"history": {"type": "Deposit", "amount": amount, "txn_id": txn_id or "", "status": "Approved", "at": datetime.utcnow().isoformat()}}}
-        )
-        await query.edit_message_text(
-            f"{old_text}\n\n✅ <b>ተፅድቋል! ({amount} ብር ተደምሯል)</b>"
-            + (f"\nTxn: <code>{txn_id}</code>" if txn_id else ""),
-            parse_mode="HTML"
-        )
+        p2, bonus_extra = apply_deposit_with_first_bonus(player_id, amount, txn_id or "")
+        extra = (" + first-deposit 20%% bonus %s Birr (play only)" % bonus_extra) if bonus_extra else ""
+        msg_admin = "%s\n\n✅ Deposit OK: %s Birr%s" % (old_text, amount, extra)
+        if txn_id:
+            msg_admin += "\nTxn: %s" % txn_id
+        await query.edit_message_text(msg_admin)
         await context.bot.send_message(
             chat_id=player_id,
-            text=f"🎉 የ ብር መሙያ ጥያቄዎ ተፅድቆ {amount} ብር ተደምሯል።",
+            text="🎉 Deposit approved! +%s Birr%s" % (amount, extra),
             reply_markup=get_persistent_keyboard()
         )
 
@@ -844,6 +882,22 @@ async def cmd_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = text[:4000] + "\n..."
     await update.message.reply_text(text, parse_mode="HTML")
 
+
+async def cmd_clearallhistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /clearallhistory CONFIRM — ሁሉም players history clear"""
+    if str(update.effective_user.id) != str(ADMIN_ID).strip():
+        await update.message.reply_text("Admin ብቻ")
+        return
+    if not context.args or context.args[0].upper() != "CONFIRM":
+        await update.message.reply_text(
+            "⚠️ ሁሉንም history ለማጽዳት:\n<code>/clearallhistory CONFIRM</code>",
+            parse_mode="HTML"
+        )
+        return
+    init_db()
+    r = players_col.update_many({}, {"$set": {"history": []}})
+    await update.message.reply_text(f"✅ History cleared for {r.modified_count} users")
+
 async def cmd_bal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != str(ADMIN_ID).strip():
         await update.message.reply_text("Admin ብቻ")
@@ -1007,6 +1061,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("players", cmd_players))
     app.add_handler(CommandHandler("addbal", cmd_addbal))
     app.add_handler(CommandHandler("subbal", cmd_subbal))
+    app.add_handler(CommandHandler("clearallhistory", cmd_clearallhistory))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(CallbackQueryHandler(admin_approval, pattern="^(app_|rej_)"))
     app.add_handler(CallbackQueryHandler(buttons))
