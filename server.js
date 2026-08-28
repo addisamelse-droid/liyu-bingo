@@ -628,7 +628,8 @@ function startRoomTimer(stake) {
     room.timerInterval = setInterval(() => {
         room.timeLeft--;
 
-        const activePlayerCount = getActivePlayerCount(room);
+        rebuildTakenCards(room);
+        const activePlayerCount = countRealPlayers(room); // እውነተኛ ብቻ
         const totalCardsBought = room.takenCards.length;
         const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
 
@@ -695,13 +696,16 @@ function startRoomGame(stake) {
 
     const totalCardsBought = room.takenCards.length;
     const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
+    // ተጫዋች ብዛት = ካርድ ያላቸው (እውነተኛ) — card room ጋር ተመሳሳይ
     const realP = countRealPlayers(room);
+    const activeAll = getActivePlayerCount(room);
 
     io.to(`room_${stakeNum}`).emit('game_started', { 
         gameId: room.gameId,
         prizePool: prizePool,
-        playerCount: realP,
-        totalCards: totalCardsBought
+        playerCount: realP,  // እውነተኛ ተጫዋቾች ብቻ
+        totalCards: totalCardsBought,
+        botCards: Math.max(0, activeAll - realP)
     });
 
     room.drawInterval = setInterval(() => {
