@@ -490,6 +490,36 @@ const BOT_NAMES = [
     'Meron', 'Dawit', 'Tigist', 'Yonas', 'Selam'
 ];
 
+
+function rebuildTakenCards(room) {
+    let allTaken = [];
+    Object.values(room.players || {}).forEach(p => {
+        if (p && p.cardNums && p.cardNums.length) {
+            allTaken = allTaken.concat(p.cardNums);
+        }
+    });
+    room.takenCards = allTaken;
+    return allTaken;
+}
+
+function emitRoomCardState(stakeNum) {
+    const room = rooms[stakeNum];
+    if (!room) return;
+    rebuildTakenCards(room);
+    const realP = countRealPlayers(room);
+    const totalCards = (room.takenCards || []).length;
+    const prizePool = Math.floor(totalCards * room.stake * 0.8);
+    io.to(`room_${stakeNum}`).emit('update_taken_cards', room.takenCards);
+    io.to(`room_${stakeNum}`).emit('clock_tick', {
+        gameId: room.gameId,
+        playerCount: realP,
+        totalCards: totalCards,
+        prizePool: prizePool,
+        timeLeft: room.timeLeft,
+        stake: room.stake
+    });
+}
+
 function countRealPlayers(room) {
     if (!room || !room.players) return 0;
     return Object.values(room.players).filter(
@@ -613,20 +643,26 @@ function startRoomTimer(stake) {
         if (room.timeLeft <= 0) {
             clearInterval(room.timerInterval);
             room.timerInterval = null;
-
-            // ሲስተም 5 ካርድ ካለ / ማንኛውም ካርድ ካለ → ጨዋታ ይጀምር
-            // ተጫዋች ቢወጣም ሲስተም ካርድ ካለ ይጀምራል
-            rebuildTakenCards(room);
-            const cardsNow = (room.takenCards || []).length;
-            if (cardsNow === 0) {
-                // ምንም ካርድ የለም — እንደገና countdown
-                try { fillBotCards(room, stakeNum); emitRoomCardState(stakeNum); } catch (e) {}
+            try {
+                rebuildTakenCards(room);
+                let cardsNow = (room.takenCards || []).length;
+                if (cardsNow === 0) {
+                    fillBotCards(room, stakeNum);
+                    rebuildTakenCards(room);
+                    cardsNow = (room.takenCards || []).length;
+                }
+                if (cardsNow === 0) {
+                    room.timeLeft = 30;
+                    startRoomTimer(stakeNum);
+                    return;
+                }
+                console.log('▶️ Starting game room', stakeNum, 'cards=', cardsNow);
+                startRoomGame(stakeNum);
+            } catch (e) {
+                console.error('timer end start error', e);
                 room.timeLeft = 30;
                 startRoomTimer(stakeNum);
-                return;
             }
-
-            startRoomGame(stakeNum);
         }
     }, 1000);
 }
