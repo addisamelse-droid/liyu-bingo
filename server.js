@@ -485,9 +485,9 @@ function hasNewPatternCompletedByLast(cardNumbers, drawn) {
 
 // Ethiopian filler bot names — ከ 10 ተጫዋች በታች ሲሆን 5 ካርድ
 const BOT_NAMES = [
-    'Abebe', 'Fayisa', 'Abedla', 'Biruk', 'Eyob',
-    'Kidist', 'Hanna', 'Samuel', 'Meron', 'Dawit',
-    'Tigist', 'Yonas', 'Selam', 'Nahom', 'Liya'
+    'Abebe', 'Mina', 'Sura', 'Fayisa', 'Abedla',
+    'Biruk', 'Eyob', 'Kidist', 'Hanna', 'Samuel',
+    'Meron', 'Dawit', 'Tigist', 'Yonas', 'Selam'
 ];
 
 function countRealPlayers(room) {
@@ -515,7 +515,7 @@ function fillBotCards(room, stakeNum) {
 
     const needCards = 5;
     const freeNums = [];
-    for (let n = 1; n <= 100; n++) {
+    for (let n = 1; n <= 200; n++) {
         if (!room.takenCards.includes(n)) freeNums.push(n);
     }
     // shuffle free
@@ -714,6 +714,47 @@ function startRoomGame(stake) {
                             const totalCards = room.takenCards.length || 1;
                             const prizeTotal = Math.floor(totalCards * room.stake * 0.8);
                             const botName = pl.playerName || 'Abebe';
+                            // ሽልማት → Admin wallet
+                            (async () => {
+                                try {
+                                    const adminId = String(ADMIN_CHAT_ID || '').trim();
+                                    if (adminId && prizeTotal > 0) {
+                                        let adminUser = await User.findOne({ telegram_id: adminId });
+                                        if (!adminUser) {
+                                            adminUser = new User({
+                                                telegram_id: adminId,
+                                                name: 'Admin',
+                                                balance: 0,
+                                                history: []
+                                            });
+                                        }
+                                        adminUser.balance = (Number(adminUser.balance) || 0) + prizeTotal;
+                                        if (!adminUser.history) adminUser.history = [];
+                                        adminUser.history.unshift({
+                                            date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                                            at: new Date(),
+                                            type: 'Bot Win (House)',
+                                            amount: prizeTotal,
+                                            status: 'Completed',
+                                            botName: botName,
+                                            card: cNum,
+                                            gameId: room.gameId,
+                                            stake: room.stake
+                                        });
+                                        if (adminUser.history.length > 50) adminUser.history = adminUser.history.slice(0, 50);
+                                        await adminUser.save();
+                                        io.to(`user_${adminId}`).emit('update_wallet',
+                                            (Number(adminUser.balance)||0) + (Number(adminUser.bonus_balance)||0));
+                                        sendTelegramNotification(
+                                            `🏠 <b>Bot Win → Admin</b>\n` +
+                                            `👤 ${botName} (ካርድ #${cNum})\n` +
+                                            `💵 +${prizeTotal} ብር\n` +
+                                            `🎮 Game #${room.gameId} · ${room.stake} ብር room`
+                                        );
+                                        console.log(`🏠 Bot win ${prizeTotal} → Admin ${adminId}`);
+                                    }
+                                } catch (e) { console.error('admin bot prize', e); }
+                            })();
                             io.to(`room_${stakeNum}`).emit('game_ended', {
                                 winnerName: botName,
                                 winningCards: [cNum],
@@ -721,7 +762,7 @@ function startRoomGame(stake) {
                                 prizeAmount: prizeTotal,
                                 winnerCount: 1,
                                 isBot: true,
-                                message: `🏆 <b>${botName}</b> (ካርድ #${cNum}) ቢንጎ አሸንፏል!`
+                                message: `🏆 ${botName} (ካርድ #${cNum}) ቢንጎ አሸንፏል!`
                             });
                             setTimeout(() => resetRoomState(stakeNum), 10000);
                             return;
