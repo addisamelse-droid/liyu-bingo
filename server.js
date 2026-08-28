@@ -506,13 +506,12 @@ function emitRoomCardState(stakeNum) {
     const room = rooms[stakeNum];
     if (!room) return;
     rebuildTakenCards(room);
-    const realP = countRealPlayers(room);
     const totalCards = (room.takenCards || []).length;
     const prizePool = Math.floor(totalCards * room.stake * 0.8);
     io.to(`room_${stakeNum}`).emit('update_taken_cards', room.takenCards);
     io.to(`room_${stakeNum}`).emit('clock_tick', {
         gameId: room.gameId,
-        playerCount: realP,
+        playerCount: totalCards, // ካርድ ብዛት
         totalCards: totalCards,
         prizePool: prizePool,
         timeLeft: room.timeLeft,
@@ -629,13 +628,14 @@ function startRoomTimer(stake) {
         room.timeLeft--;
 
         rebuildTakenCards(room);
-        const activePlayerCount = countRealPlayers(room); // እውነተኛ ብቻ
         const totalCardsBought = room.takenCards.length;
+        // Players ማሳያ = የካርድ ብዛት (1 ሰው 2 ካርድ → 2)
+        const displayPlayers = totalCardsBought;
         const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
 
         io.to(`room_${stakeNum}`).emit('clock_tick', {
             gameId: room.gameId,
-            playerCount: activePlayerCount,
+            playerCount: displayPlayers,
             totalCards: totalCardsBought,
             prizePool: prizePool,
             timeLeft: room.timeLeft
@@ -696,16 +696,12 @@ function startRoomGame(stake) {
 
     const totalCardsBought = room.takenCards.length;
     const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
-    // ተጫዋች ብዛት = ካርድ ያላቸው (እውነተኛ) — card room ጋር ተመሳሳይ
-    const realP = countRealPlayers(room);
-    const activeAll = getActivePlayerCount(room);
-
+    // Players = ካርድ ብዛት (ሲስተም + እውነተኛ)
     io.to(`room_${stakeNum}`).emit('game_started', { 
         gameId: room.gameId,
         prizePool: prizePool,
-        playerCount: realP,  // እውነተኛ ተጫዋቾች ብቻ
-        totalCards: totalCardsBought,
-        botCards: Math.max(0, activeAll - realP)
+        playerCount: totalCardsBought,
+        totalCards: totalCardsBought
     });
 
     room.drawInterval = setInterval(() => {
@@ -1025,13 +1021,13 @@ io.on('connection', (socket) => {
             }
         }
 
-        const activePlayerCount = getActivePlayerCount(room);
+        rebuildTakenCards(room);
         const totalCardsBought = room.takenCards.length;
         const prizePool = Math.floor(totalCardsBought * room.stake * 0.8);
 
         socket.emit('init_state', {
             gameId: room.gameId,
-            playerCount: activePlayerCount,
+            playerCount: totalCardsBought,
             totalCards: totalCardsBought,
             prizePool: prizePool,
             timeLeft: room.timeLeft,

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ሊዩ ቢንጎ (Liyu Bingo)</title>
+<title>ልዩ ቢንጎ (Liyu Bingo)</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 
@@ -382,6 +382,13 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 .afro-board .numbers-col{gap:3px!important;}
 .afro-bingo-letters .bl{font-size:clamp(12px,3vw,16px)!important;padding:6px 0!important;}
 .cards-scroll-container .bingo div,.cards-2col .bingo div{aspect-ratio:1!important;display:flex!important;align-items:center;justify-content:center;font-size:clamp(10px,2.6vw,14px)!important;padding:2px!important;}
+
+
+/* ጨዋታ ላይ የተጫዋች ካርድ ብቻ — ውጪ ተጨማሪ ካርድ አይታይ */
+#mainGameSection #selectedCardsPreview{display:none!important;}
+#mainGameSection .card-grid-container{display:none!important;}
+#bingoCardsContainer .box{overflow:hidden;}
+#bingoCardsContainer .bingo div{overflow:hidden;text-overflow:clip;}
 
 </style>
 </head>
@@ -1084,6 +1091,19 @@ socket.on('clock_tick', (data) => {
 socket.on('game_started', (data) => {
     gameInProgress = true;
     window._prevLatestCalled = null;
+    // ተጫዋች ብዛት ከ card room ይቆይ
+    if (data.playerCount != null) {
+        const el = document.getElementById("playerCount");
+        if (el) el.textContent = String(data.playerCount);
+    }
+    if (data.totalCards != null) {
+        const tc = document.getElementById("totalCards");
+        if (tc) tc.textContent = String(data.totalCards);
+    }
+    if (data.prizePool != null) {
+        const pp = document.getElementById("prizePool");
+        if (pp) pp.textContent = String(data.prizePool);
+    }
     renderCalledNumbers();
     updateCalledNumbersUI([]);
     document.getElementById("winnerBox").classList.add("hide");
@@ -1146,12 +1166,14 @@ socket.on('number_drawn', (data) => {
                 cardNumbersMap[cardNum] = getServerCardNumbersJS(cardNum);
             }
             const nums = cardNumbersMap[cardNum] || [];
+            // ካርድ ላይ ያለ ቁጥር ብቻ ምልክት — ውጪ ቁጥር አይታይ/አይምረጥ
             nums.forEach((num, index) => {
                 if (num === "FREE") return;
-                if (Number(num) === justDrawn) {
-                    const cell = document.getElementById(`bingo_cell_${cardNum}_${index}`);
-                    if(cell && !cell.classList.contains("mark")) cell.classList.add("mark");
-                }
+                if (Number(num) !== justDrawn) return;
+                const cell = document.getElementById(`bingo_cell_${cardNum}_${index}`);
+                if (!cell) return;
+                if (String(cell.dataset.value) !== String(justDrawn) && cell.dataset.value !== "FREE") return;
+                if (!cell.classList.contains("mark")) cell.classList.add("mark");
             });
         });
 
