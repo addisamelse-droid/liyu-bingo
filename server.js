@@ -587,6 +587,14 @@ function startRoomTimer(stake) {
 
     room.timeLeft = 30;
 
+    // 30 ሰከንድ ሲጀመር — ሲስተም 5 ካርድ እንደ ተጫዋች ይመርጣል (ለሁሉም ይታያል)
+    if (!room.isGameInProgress) {
+        try {
+            fillBotCards(room, stakeNum);
+            emitRoomCardState(stakeNum);
+        } catch (e) { console.error('bot fill on timer', e); }
+    }
+
     room.timerInterval = setInterval(() => {
         room.timeLeft--;
 
@@ -606,8 +614,13 @@ function startRoomTimer(stake) {
             clearInterval(room.timerInterval);
             room.timerInterval = null;
 
-            // ባዶ ክፍል — ጨዋታ አትጀምር (dummy card አይጨመርም)
-            if (totalCardsBought === 0 || activePlayerCount === 0) {
+            // ሲስተም 5 ካርድ ካለ / ማንኛውም ካርድ ካለ → ጨዋታ ይጀምር
+            // ተጫዋች ቢወጣም ሲስተም ካርድ ካለ ይጀምራል
+            rebuildTakenCards(room);
+            const cardsNow = (room.takenCards || []).length;
+            if (cardsNow === 0) {
+                // ምንም ካርድ የለም — እንደገና countdown
+                try { fillBotCards(room, stakeNum); emitRoomCardState(stakeNum); } catch (e) {}
                 room.timeLeft = 30;
                 startRoomTimer(stakeNum);
                 return;
@@ -636,7 +649,7 @@ function startRoomGame(stake) {
     // ከ 10 እውነተኛ ተጫዋች በታች → 5 bot ካርድ (Abebe, Fayisa, ...)
     try {
         fillBotCards(room, stakeNum);
-        io.to(`room_${stakeNum}`).emit('update_taken_cards', room.takenCards);
+        emitRoomCardState(stakeNum);
     } catch (e) { console.error('fillBotCards', e); }
 
     room.isGameInProgress = true;
@@ -987,6 +1000,14 @@ io.on('connection', (socket) => {
             drawnNumbers: room.drawnNumbers || [],
             myCards: myCards
         });
+
+        // Lobby: ሲስተም መጀመሪያ 5 ካርድ ይመርጣል — ለሁሉም ይታያል
+        if (!room.isGameInProgress) {
+            try {
+                fillBotCards(room, stakeNum);
+                emitRoomCardState(stakeNum);
+            } catch (e) { console.error(e); }
+        }
 
         socket.emit('update_taken_cards', room.takenCards);
         if (myCards.length > 0) {
