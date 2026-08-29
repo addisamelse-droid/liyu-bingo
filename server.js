@@ -4,8 +4,8 @@ const http = require('http').createServer(app);
 
 // 🟢 1. የኔትወርክ መረጋጋት ማስተካከያ (CORS እና Ping Timouts)
 const io = require('socket.io')(http, {
-    pingInterval: 10000,
-    pingTimeout: 30000,
+    pingInterval: 15000,
+    pingTimeout: 60000,
     cors: { origin: '*', methods: ['GET', 'POST'] },
 
     cors: {
