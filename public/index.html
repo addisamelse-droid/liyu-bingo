@@ -759,6 +759,26 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   flex:0 0 auto!important;
 }
 
+
+#bingoCardsContainer .player-bingo-card [id^="bingoCard_"]{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  grid-template-rows:repeat(5,minmax(0,1fr))!important;
+  aspect-ratio:1/1!important;
+  width:100%!important;
+  gap:3px!important;
+}
+#bingoCardsContainer .player-bingo-card [id^="bingoCard_"] > div{
+  width:100%!important;
+  height:100%!important;
+  min-height:0!important;
+  aspect-ratio:1!important;
+  font-size:clamp(11px,3vw,15px)!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+
 </style>
 </head>
 <body>
@@ -1003,7 +1023,14 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if(tg){ tg.ready(); tg.expand(); }
 
-const socket = io();
+const socket = io({
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+});
 
 socket.on('connect', () => {
     console.log('✅ ኔትወርክ ተገናኝቷል');
@@ -1406,13 +1433,13 @@ function renderAllBingoCards(){
 
         const grid = document.createElement("div");
         grid.id = "bingoCard_" + cardNum;
-        grid.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:3px;width:100%;";
+        grid.style.cssText = "display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:3px;width:100%;aspect-ratio:1/1;max-height:min(42vh,320px);";
         nums.forEach(function(num, index){
             const cell = document.createElement("div");
             cell.id = "bingo_cell_" + cardNum + "_" + index;
             cell.dataset.value = String(num);
             cell.textContent = (num === "FREE" || num === "free") ? "FREE" : String(num);
-            cell.style.cssText = "display:flex;align-items:center;justify-content:center;min-height:30px;padding:5px 2px;font-size:13px;font-weight:900;color:#2d0a3a;background:#efe6f7;border-radius:4px;";
+            cell.style.cssText = "display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:0;padding:2px;font-size:clamp(11px,3.2vw,15px);font-weight:900;color:#2d0a3a;background:#efe6f7;border-radius:4px;box-sizing:border-box;";
             if (num === "FREE") {
                 cell.style.background = "#ff9800";
                 cell.style.color = "#fff";
@@ -1440,6 +1467,18 @@ function renderAllBingoCards(){
         container.appendChild(cardBox);
     });
 }
+
+
+socket.on('connect', () => {
+    if (currentStake && player && player.telegram_id) {
+        socket.emit('register_telegram_user', player.telegram_id);
+        socket.emit('join_room', {
+            stake: currentStake,
+            telegram_id: player.telegram_id,
+            playerName: player.name || 'ተጫዋች'
+        });
+    }
+});
 
 socket.on('init_state', (data) => {
     document.getElementById("gameId").textContent = data.gameId || "---";
@@ -1631,34 +1670,23 @@ function markDrawnOnPlayerCards(justDrawn) {
         if (!cardNumbersMap[cardNum]) {
             cardNumbersMap[cardNum] = getServerCardNumbersJS(cardNum);
         }
-        const nums = cardNumbersMap[cardNum] || [];
         const grid = document.getElementById("bingoCard_" + cardNum);
-        // በ id
-        nums.forEach((num, index) => {
-            if (num === "FREE") return;
-            if (Number(num) !== drawnN) return;
-            let cell = document.getElementById("bingo_cell_" + cardNum + "_" + index);
-            if (!cell && grid) {
-                // fallback: text match
-                const cells = grid.querySelectorAll("div");
-                cells.forEach(c => {
-                    if (Number(c.textContent) === drawnN || Number(c.dataset.value) === drawnN) {
-                        cell = c;
-                    }
-                });
+        if (!grid) return;
+        grid.querySelectorAll("div[data-value]").forEach(function(c) {
+            const v = c.dataset.value;
+            if (v === "FREE") {
+                c.classList.add("free", "mark");
+                c.style.background = "#ff9800";
+                c.style.color = "#fff";
+                return;
             }
-            if (cell) cell.classList.add("mark");
+            const nv = Number(v);
+            if (nv === drawnN || (currentDrawnNumbers || []).map(Number).includes(nv)) {
+                c.classList.add("mark");
+                c.style.background = "#079b20";
+                c.style.color = "#fff";
+            }
         });
-        // ተጨማሪ: grid ውስጥ ሁሉንም drawn ምልክት (sync)
-        if (grid) {
-            grid.querySelectorAll("div").forEach(c => {
-                const v = c.dataset.value;
-                if (v === "FREE") { c.classList.add("free", "mark"); return; }
-                if (currentDrawnNumbers.map(Number).includes(Number(v))) {
-                    c.classList.add("mark");
-                }
-            });
-        }
     });
 }
 

@@ -4,6 +4,10 @@ const http = require('http').createServer(app);
 
 // 🟢 1. የኔትወርክ መረጋጋት ማስተካከያ (CORS እና Ping Timouts)
 const io = require('socket.io')(http, {
+    pingInterval: 10000,
+    pingTimeout: 30000,
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
@@ -1066,7 +1070,10 @@ io.on('connection', (socket) => {
             socket.emit('game_started', {
                 gameId: room.gameId,
                 prizePool: prizePool,
-                isSpectator: spectator
+                playerCount: (room.takenCards || []).length,
+                totalCards: (room.takenCards || []).length,
+                isSpectator: spectator,
+                drawnNumbers: room.drawnNumbers || []
             });
 
             if (room.drawnNumbers && room.drawnNumbers.length > 0) {
