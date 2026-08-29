@@ -387,8 +387,8 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 /* ጨዋታ ላይ የተጫዋች ካርድ ብቻ — ውጪ ተጨማሪ ካርድ አይታይ */
 #mainGameSection #selectedCardsPreview{display:none!important;}
 #mainGameSection .card-grid-container{display:none!important;}
-#bingoCardsContainer .box{overflow:hidden;}
-#bingoCardsContainer .bingo div{overflow:hidden;text-overflow:clip;}
+/* overflow fixed */
+/* text visible */
 
 
 /* ===== 2 & 3 cards — readable + zoom ===== */
@@ -451,6 +451,75 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
     grid-template-columns:1fr!important;
     max-height:50vh!important;
   }
+}
+
+
+/* ===== FORCE visible numbers on 2-3 cards ===== */
+#bingoCardsContainer.cards-multi{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+  max-height:52vh!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  transform:none!important;
+  padding:2px!important;
+}
+#bingoCardsContainer.cards-multi .box{
+  overflow:visible!important;
+  padding:8px 6px!important;
+  margin:0!important;
+  background:#ffffff!important;
+  min-height:0!important;
+}
+#bingoCardsContainer.cards-multi .bingo{
+  display:grid!important;
+  grid-template-columns:repeat(5,1fr)!important;
+  gap:3px!important;
+  width:100%!important;
+}
+#bingoCardsContainer.cards-multi .bingo div{
+  overflow:visible!important;
+  text-overflow:unset!important;
+  aspect-ratio:auto!important;
+  min-height:28px!important;
+  height:auto!important;
+  line-height:1.2!important;
+  padding:6px 1px!important;
+  font-size:13px!important;
+  font-weight:900!important;
+  color:#351044!important;
+  background:#f4eef5!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-radius:4px!important;
+}
+#bingoCardsContainer.cards-multi .bingo div.mark{
+  background:#079b20!important;
+  color:#fff!important;
+}
+#bingoCardsContainer.cards-multi .bingo div.free{
+  background:#ffb000!important;
+  color:#fff!important;
+}
+#bingoCardsContainer.cards-multi h4{
+  font-size:12px!important;
+  color:#4a148c!important;
+  margin:0 0 4px!important;
+}
+#bingoCardsContainer.cards-1 .bingo div{
+  min-height:34px!important;
+  font-size:16px!important;
+  color:#351044!important;
+  overflow:visible!important;
+}
+#bingoCardsContainer{
+  transform:none!important;
+}
+@media (max-width:360px){
+  #bingoCardsContainer.cards-multi{grid-template-columns:1fr!important;}
+  #bingoCardsContainer.cards-multi .bingo div{font-size:14px!important;min-height:30px!important;}
 }
 
 </style>
@@ -1040,18 +1109,23 @@ function renderSelectedCardsPreview(){
 
 
 function cardZoomIn(){
-    window._cardZoom = Math.min(1.45, (window._cardZoom || 1) + 0.15);
-    const c = document.getElementById("bingoCardsContainer");
-    if (c) c.style.transform = "scale(" + window._cardZoom + ")";
-    const lab = document.getElementById("cardZoomLabel");
-    if (lab) lab.textContent = Math.round(window._cardZoom * 100) + "%";
+    window._cardZoom = Math.min(1.4, (window._cardZoom || 1) + 0.1);
+    applyCardZoom();
 }
 function cardZoomOut(){
-    window._cardZoom = Math.max(0.75, (window._cardZoom || 1) - 0.15);
-    const c = document.getElementById("bingoCardsContainer");
-    if (c) c.style.transform = "scale(" + window._cardZoom + ")";
+    window._cardZoom = Math.max(0.85, (window._cardZoom || 1) - 0.1);
+    applyCardZoom();
+}
+function applyCardZoom(){
+    const z = window._cardZoom || 1;
+    const size = Math.round(13 * z);
+    const minH = Math.round(28 * z);
+    document.querySelectorAll("#bingoCardsContainer.cards-multi .bingo div").forEach(el => {
+        el.style.fontSize = size + "px";
+        el.style.minHeight = minH + "px";
+    });
     const lab = document.getElementById("cardZoomLabel");
-    if (lab) lab.textContent = Math.round(window._cardZoom * 100) + "%";
+    if (lab) lab.textContent = Math.round(z * 100) + "%";
 }
 
 function renderAllBingoCards(){
@@ -1062,7 +1136,7 @@ function renderAllBingoCards(){
     const n = (selectedCards || []).length;
     container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi") + (n === 3 ? " cards-count-3" : "");
     if (typeof window._cardZoom !== "number") window._cardZoom = 1;
-    container.style.transform = n > 1 ? ("scale(" + window._cardZoom + ")") : "";
+    container.style.transform = ""; window._cardZoom = 1;
     // Zoom bar for 2-3 cards
     let zoomBar = document.getElementById("cardZoomBar");
     if (n >= 2) {
