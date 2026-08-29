@@ -650,6 +650,40 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   }
 }
 
+
+/* 3 cards all visible + no numbers outside player cards */
+#selectedCardsPreview{display:none!important;}
+#mainGameSection #selectedCardsPreview,
+#mainGameSection #cardGridContainer,
+#mainGameSection .card-grid-container{display:none!important;height:0!important;overflow:hidden!important;}
+#mainGameSection #bingoCardsContainer.cards-multi.cards-count-3{
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
+  gap:10px!important;
+  max-height:58vh!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi.cards-count-3 .player-bingo-card,
+#mainGameSection #bingoCardsContainer.cards-multi.cards-count-3 .box{
+  width:100%!important;
+  flex-shrink:0!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi.cards-count-3 .bingo div{
+  font-size:13px!important;
+  min-height:28px!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi:not(.cards-count-3){
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  max-height:50vh!important;
+}
+#mainGameSection .afro-right{
+  overflow:visible!important;
+  min-height:0!important;
+}
+
 </style>
 </head>
 <body>
@@ -1200,8 +1234,16 @@ function updateCardGridUI(){
         if(takenCards.includes(i)) el.classList.add("taken");
         if(selectedCards.includes(i)) el.classList.add("selected");
     }
-    document.getElementById("selectedCardsText").textContent = selectedCards.length > 0 ? selectedCards.join(", ") : "ምንም የለም (ተመልካች)";
-    renderSelectedCardsPreview();
+    const st = document.getElementById("selectedCardsText");
+    if (st) st.textContent = selectedCards.length > 0 ? selectedCards.join(", ") : "ምንም የለም (ተመልካች)";
+    // preview በጨዋታ ላይ አይታይ — selection ብቻ
+    const selSec = document.getElementById("cardSelectionSection");
+    if (selSec && !selSec.classList.contains("hide")) {
+        renderSelectedCardsPreview();
+    } else {
+        const preview = document.getElementById("selectedCardsPreview");
+        if (preview) preview.innerHTML = "";
+    }
 }
 
 // ካርድ ሲመረጥ ከታች ሙሉ ቢንጎ ካርድ ማሳየት
@@ -1242,12 +1284,17 @@ function renderAllBingoCards(){
     const container = document.getElementById("bingoCardsContainer");
     if(!container) return;
     container.innerHTML = "";
+    // ከካርድ ውጪ ቁጥሮች አትተው
+    const preview = document.getElementById("selectedCardsPreview");
+    if (preview) preview.innerHTML = "";
     cardNumbersMap = {};
-    const n = (selectedCards || []).length;
+    const cards = (selectedCards || []).map(Number).filter(Boolean).slice(0, 3);
+    const n = cards.length;
     container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi") + (n >= 3 ? " cards-count-3" : "");
     container.style.transform = "none";
+    container.style.display = n >= 3 ? "flex" : "";
 
-    selectedCards.forEach(cardNum => {
+    cards.forEach(cardNum => {
         const nums = getServerCardNumbersJS(cardNum).slice(0, 25); // ትክክል 25 ብቻ
         cardNumbersMap[cardNum] = nums;
 
@@ -1925,188 +1972,4 @@ async function loadAdminStats(){
             return;
         }
         document.getElementById('admUsers').textContent = data.summary.totalUsers;
-        document.getElementById('admAgents').textContent = data.summary.agentCount;
-        document.getElementById('admTotalBal').textContent = fmtBr(data.summary.totalBalance);
-        const gInfo = document.getElementById('admGamesInfo');
-        if (gInfo) gInfo.textContent = 'ጨዋታዎች: ' + (data.summary.gamesTotal||0) + ' (ዛሬ: ' + (data.summary.gamesDaily||0) + ')';
-        const labels = { daily:'📅 Daily', weekly:'📆 Weekly', monthly:'🗓️ Monthly', yearly:'📊 Yearly', all:'∞ All time' };
-        let html = '';
-        for (const key of ['daily','weekly','monthly','yearly','all']) {
-            const p = data.periods[key];
-            html += `<div class="afro-card" style="margin-top:8px;">
-              <div class="afro-label">${labels[key]}</div>
-              <div class="afro-stat-row"><span>💵 Deposit</span><b>Br ${fmtBr(p.deposit)}</b></div>
-              <div class="afro-stat-row"><span>📤 Withdraw</span><b>Br ${fmtBr(p.withdraw)}</b></div>
-              <div class="afro-stat-row"><span>🎫 Card Buy</span><b>Br ${fmtBr(p.cardBuy)}</b></div>
-              <div class="afro-stat-row"><span>🏆 Win Payout</span><b>Br ${fmtBr(p.win)}</b></div>
-              <div class="afro-stat-row"><span>🤝 Agent Comm.</span><b>Br ${fmtBr(p.commission)}</b></div>
-              <div class="afro-stat-row" style="background:#e8f5e9;"><span>📈 Benefit</span><b style="color:#2e7d32;">Br ${fmtBr(p.benefit)}</b></div>
-            </div>`;
-        }
-        if (data.recentGames && data.recentGames.length) {
-            html += '<div class="afro-card" style="margin-top:8px;"><div class="afro-label">🎮 የቅርብ ጨዋታዎች (Game ID)</div>';
-            data.recentGames.forEach(g => {
-                html += '<div class="afro-stat-row"><span>#'+g.gameId+' · '+g.stake+'ብር<br><small>'+(g.winners||'')+'</small></span><b>Br '+fmtBr(g.prizeTotal)+'</b></div>';
-            });
-            html += '</div>';
-        }
-        if (box) box.innerHTML = html;
-    } catch(e) {
-        if (box) box.innerHTML = '<p>Error</p>';
-    }
-}
-
-function showAgentPage(){
-    showPage('agentPage');
-    loadAgentDashboard();
-}
-function copyAgentLink(){
-    const el = document.getElementById('agentLink');
-    if (!el) return;
-    navigator.clipboard.writeText(el.textContent).then(()=>alert('Link ተቀድቷል!')).catch(()=>alert(el.textContent));
-}
-async function loadAgentDashboard(){
-    if (!player || !player.telegram_id) return;
-    try {
-        const res = await fetch('/api/agent/dashboard', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ telegram_id: player.telegram_id })
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            document.getElementById('agentPlayerList').textContent = data.error || 'Agent አይደሉም';
-            return;
-        }
-        document.getElementById('agentBal').textContent = fmtBr(data.agent.agent_balance || data.agent.balance);
-        document.getElementById('agentPlayers').textContent = data.stats.playerCount;
-        document.getElementById('agentDep').textContent = fmtBr(data.stats.totalDeposit);
-        document.getElementById('agentWd').textContent = fmtBr(data.stats.totalWithdraw);
-        const winEl = document.getElementById('agentWinsTotal');
-        if (winEl) winEl.textContent = fmtBr(data.stats.totalWins || 0);
-        const botUser = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) ? '' : '';
-        // link uses agent telegram id
-        if (data.referral_link) {
-            document.getElementById('agentLink').textContent = data.referral_link;
-            if (data.botUsername) window._botUsername = data.botUsername;
-        } else {
-            const botU = window._botUsername || data.botUsername || '';
-            document.getElementById('agentLink').textContent = botU
-                ? ('https://t.me/' + botU + '?start=ag_' + player.telegram_id)
-                : ('https://t.me/YOUR_BOT?start=ag_' + player.telegram_id);
-        }
-        const list = document.getElementById('agentPlayerList');
-        if (!data.players.length) list.innerHTML = '<p>ተጫዋች የለም</p>';
-        else list.innerHTML = data.players.map(p => {
-            const stDep = p.status && p.status.deposit === 'Pending' ? '⏳' : (p.deposit > 0 ? '✅' : '—');
-            const stWd = p.status && p.status.withdraw === 'Pending' ? '⏳' : (p.withdraw > 0 ? '✅' : '—');
-            const stWin = (p.win > 0) ? '🏆' : '—';
-            return `<div class="afro-card" style="margin:8px 0;padding:10px;text-align:left;">
-              <div style="font-weight:800;font-size:14px;">${p.name||p.id}</div>
-              <div style="font-size:11px;opacity:.85;">ID: ${p.id} · 📞 ${p.phone||'-'}</div>
-              <div class="afro-stat-row"><span>💰 Wallet</span><b>Br ${fmtBr(p.total_balance)} <small>(ዋና ${fmtBr(p.balance)} · ቦነስ ${fmtBr(p.bonus_balance)})</small></b></div>
-              <div class="afro-stat-row"><span>💵 Deposit ${stDep}</span><b>Br ${fmtBr(p.deposit)}${p.pendingDeposit? ' · ⏳'+fmtBr(p.pendingDeposit):''}</b></div>
-              <div class="afro-stat-row"><span>📤 Withdraw ${stWd}</span><b>Br ${fmtBr(p.withdraw)}${p.pendingWithdraw? ' · ⏳'+fmtBr(p.pendingWithdraw):''}</b></div>
-              <div class="afro-stat-row"><span>🏆 Win ${stWin}</span><b>Br ${fmtBr(p.win)} (${p.wins_count||0}×)</b></div>
-              <div class="afro-stat-row"><span>🎫 Card Buy</span><b>Br ${fmtBr(p.cardBuy||0)}</b></div>
-            </div>`;
-        }).join('');
-    } catch(e) { console.log(e); }
-}
-
-function showWalletPage(){
-    showPage('walletPage');
-    if(player) fillWalletUI(player);
-    else fetchLatestBalance();
-}
-function showProfilePage(){
-    showPage('profilePage');
-    if(player) fillProfilePage(player);
-    else fetchLatestBalance();
-}
-
-function showHistory(){ 
-    showPage("historyPage"); 
-    if(player) socket.emit('get_user_history', { telegram_id: player.telegram_id }); 
-}
-
-function toggleVoice(){
-    voiceEnabled = !voiceEnabled;
-    const btn = document.getElementById("voiceButton");
-    if(btn) {
-        btn.textContent = voiceEnabled ? "🔊 Sound" : "🔇 Sound";
-        btn.style.background = voiceEnabled ? "#079b20" : "#9e9e9e";
-        btn.style.color = "#fff";
-    }
-}
-
-function toggleAutoMode(){
-    isAutoMarkEnabled = !isAutoMarkEnabled;
-    const btn = document.getElementById("autoModeButton");
-    if(btn) {
-        btn.textContent = isAutoMarkEnabled ? "⚡ Auto" : "✋ Manual";
-        btn.style.background = isAutoMarkEnabled ? "#007bff" : "#9e9e9e";
-    }
-    // Auto ሲበራ — የወጡ ቁጥሮችን በካርድ ላይ ምልክት
-    if (isAutoMarkEnabled && currentDrawnNumbers && currentDrawnNumbers.length) {
-        currentDrawnNumbers.forEach(n => markDrawnOnPlayerCards(Number(n)));
-    }
-}
-
-
-socket.on('update_history', (history) => {
-    const list = document.getElementById("historyList");
-    if(!history || history.length === 0) {
-        list.innerHTML = "<p>ምንም የታሪክ መረጃ የለም</p>";
-        return;
-    }
-    list.innerHTML = history.map(h => `
-        <div class="historyrow">
-            <b>${h.type}</b>: ${h.amount} ብር<br>
-            <small>ሰዓት: ${h.date} | ሁኔታ: <b>${h.status}</b></small>
-        </div>
-    `).join('');
-});
-
-let currentGameAudio = null;
-function stopGameAudio(){
-    try {
-        if (currentGameAudio) {
-            currentGameAudio.pause();
-            currentGameAudio.currentTime = 0;
-            currentGameAudio = null;
-        }
-    } catch(e) {}
-}
-function playRecordedVoice(num){
-    if(!voiceEnabled) return;
-    stopGameAudio();
-    let letter = 'b';
-    if(num >= 1 && num <= 15) letter = 'b';
-    else if(num >= 16 && num <= 30) letter = 'i';
-    else if(num >= 31 && num <= 45) letter = 'n';
-    else if(num >= 46 && num <= 60) letter = 'g';
-    else if(num >= 61 && num <= 75) letter = 'o';
-    const audioUrl = `${window.location.origin}/sounds/${letter}${num}.mp3`;
-    currentGameAudio = new Audio(audioUrl);
-    currentGameAudio.play().catch(e => console.log('Audio play error:', e));
-}
-
-fetch('/api/config').then(r=>r.json()).then(c=>{
-    if(c && c.botUsername) window._botUsername = c.botUsername;
-}).catch(()=>{});
-login();
-
-// Wallet በየ 3 ሰከንድ ያድሳል (Bot Deposit እንዲታይ)
-setInterval(() => { 
-    if (document.visibilityState !== 'hidden') fetchLatestBalance(); 
-}, 3000);
-
-// Mini App ሲከፈት / ሲመለስ ወዲያውኑ balance ያድሳል
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        fetchLatestBalance();
-    }
-});
-</script>
-</body>
-</html>d
+        
