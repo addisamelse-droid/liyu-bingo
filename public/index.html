@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="am">
 <head>
 <meta charset="UTF-8">
@@ -359,8 +359,9 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   font-size:15px!important;
 }
 #bingoCardsContainer.cards-multi{
-  display:grid!important;
-  grid-template-columns:1fr 1fr!important;
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
   gap:6px!important;
   max-height:38vh!important;
   overflow-y:auto!important;
@@ -402,8 +403,9 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   min-height:36px!important;
 }
 #bingoCardsContainer.cards-multi{
-  display:grid!important;
-  grid-template-columns:1fr 1fr!important;
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
   gap:10px!important;
   max-height:48vh!important;
   overflow-y:auto!important;
@@ -450,8 +452,9 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 
 /* ===== FORCE visible numbers on 2-3 cards ===== */
 #bingoCardsContainer.cards-multi{
-  display:grid!important;
-  grid-template-columns:1fr 1fr!important;
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
   gap:8px!important;
   max-height:52vh!important;
   overflow-x:hidden!important;
@@ -536,8 +539,9 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 /* 2-3 cards comfortable game view */
 #mainGameSection 
 #mainGameSection #bingoCardsContainer.cards-multi{
-  display:grid!important;
-  grid-template-columns:1fr 1fr!important;
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
   gap:10px!important;
   max-height:55vh!important;
   overflow-y:auto!important;
@@ -587,8 +591,9 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   font-weight:900!important;
 }
 #mainGameSection #bingoCardsContainer.cards-multi{
-  display:grid!important;
-  grid-template-columns:1fr 1fr!important;
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
   gap:8px!important;
   max-height:48vh!important;
   overflow-y:auto!important;
@@ -706,6 +711,37 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   min-height:30px!important;
   font-weight:900!important;
   color:#2d0a3a!important;
+}
+
+
+/* ==== FINAL: 2 and 3 cards ALWAYS stacked top-bottom ==== */
+#mainGameSection #bingoCardsContainer.cards-multi,
+#mainGameSection #bingoCardsContainer.cards-stack,
+#bingoCardsContainer.cards-multi,
+#bingoCardsContainer.cards-stack{
+  display:flex!important;
+  flex-direction:column!important;
+  flex-wrap:nowrap!important;
+  grid-template-columns:none!important;
+  grid-auto-flow:row!important;
+  gap:12px!important;
+  max-height:58vh!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  width:100%!important;
+  height:auto!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi > *,
+#bingoCardsContainer.cards-multi > *{
+  width:100%!important;
+  max-width:100%!important;
+  flex:0 0 auto!important;
+  display:block!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi .bingo,
+#bingoCardsContainer.cards-multi .bingo{
+  display:grid!important;
+  grid-template-columns:repeat(5,1fr)!important;
 }
 
 </style>
@@ -1310,7 +1346,18 @@ function renderAllBingoCards(){
     const n = cards.length;
     container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi cards-stack");
     container.style.transform = "none";
-    container.style.display = n >= 2 ? "flex" : "";
+    if (n >= 2) {
+        container.style.display = "flex";
+        container.style.flexDirection = "column";
+        container.style.gridTemplateColumns = "none";
+        container.style.gap = "12px";
+        container.style.width = "100%";
+        container.style.maxHeight = "58vh";
+        container.style.overflowY = "auto";
+    } else {
+        container.style.display = "block";
+        container.style.flexDirection = "";
+    }
 
     cards.forEach(cardNum => {
         const nums = getServerCardNumbersJS(cardNum).slice(0, 25); // ትክክል 25 ብቻ
