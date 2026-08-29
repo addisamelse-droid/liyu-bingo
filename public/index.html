@@ -522,6 +522,22 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   #bingoCardsContainer.cards-multi .bingo div{font-size:14px!important;min-height:30px!important;}
 }
 
+
+#bingoCardsContainer .player-bingo-card .bingo{
+  display:grid!important;
+  grid-template-columns:repeat(5,1fr)!important;
+  grid-template-rows:repeat(5,auto)!important;
+  gap:3px!important;
+}
+#bingoCardsContainer .player-bingo-card .bingo > div{
+  color:#351044!important;
+  font-weight:900!important;
+  font-size:13px!important;
+  min-height:28px!important;
+  background:#f4eef5!important;
+}
+#cardZoomBar{position:relative;z-index:20;display:none;}
+
 </style>
 </head>
 <body>
@@ -1134,61 +1150,70 @@ function renderAllBingoCards(){
     container.innerHTML = "";
     cardNumbersMap = {};
     const n = (selectedCards || []).length;
-    container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi") + (n === 3 ? " cards-count-3" : "");
+    container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi") + (n >= 3 ? " cards-count-3" : "");
     if (typeof window._cardZoom !== "number") window._cardZoom = 1;
-    container.style.transform = ""; window._cardZoom = 1;
-    // Zoom bar for 2-3 cards
+    container.style.transform = "none";
+
+    // Zoom bar — ሁልጊዜ ከ container ውጭ፣ 2-3 ካርድ ሲኖር ብቻ
     let zoomBar = document.getElementById("cardZoomBar");
-    if (n >= 2) {
-        if (!zoomBar) {
-            zoomBar = document.createElement("div");
-            zoomBar.id = "cardZoomBar";
-            container.parentNode.insertBefore(zoomBar, container);
+    if (!zoomBar && container.parentNode) {
+        zoomBar = document.createElement("div");
+        zoomBar.id = "cardZoomBar";
+        container.parentNode.insertBefore(zoomBar, container);
+    }
+    if (zoomBar) {
+        if (n >= 2) {
+            zoomBar.style.display = "flex";
+            zoomBar.innerHTML = '<button type="button" onclick="cardZoomOut()">➖ Zoom</button>' +
+                '<span id="cardZoomLabel">' + Math.round((window._cardZoom||1)*100) + '%</span>' +
+                '<button type="button" onclick="cardZoomIn()">➕ Zoom</button>';
+        } else {
+            zoomBar.style.display = "none";
         }
-        zoomBar.style.display = "flex";
-        zoomBar.innerHTML = '<button type="button" onclick="cardZoomOut()">➖ Zoom</button>' +
-            '<span id="cardZoomLabel">' + Math.round(window._cardZoom*100) + '%</span>' +
-            '<button type="button" onclick="cardZoomIn()">➕ Zoom</button>';
-    } else if (zoomBar) {
-        zoomBar.style.display = "none";
     }
 
     selectedCards.forEach(cardNum => {
-        cardNumbersMap[cardNum] = getServerCardNumbersJS(cardNum);
+        const nums = getServerCardNumbersJS(cardNum).slice(0, 25); // ትክክል 25 ብቻ
+        cardNumbersMap[cardNum] = nums;
 
         const cardBox = document.createElement("div");
-        cardBox.className = "box";
-        cardBox.style.margin = "0 0 8px 0";
-        cardBox.style.padding = "8px";
+        cardBox.className = "player-bingo-card box";
+        cardBox.style.cssText = "margin:0;padding:8px;overflow:hidden;";
 
-        cardBox.innerHTML = `
-            <h4 style="margin:0 0 4px 0; text-align:center; font-size:13px;">🎯 ካርድ #${cardNum}</h4>
-            <div class="bingo-header">
-                <div>B</div><div>I</div><div>N</div><div>G</div><div>O</div>
-            </div>
-            <div id="bingoCard_${cardNum}" class="bingo"></div>
-        `;
-        container.appendChild(cardBox);
+        const title = document.createElement("h4");
+        title.style.cssText = "margin:0 0 4px 0;text-align:center;font-size:13px;color:#4a148c;";
+        title.textContent = "🎯 ካርድ #" + cardNum;
+        cardBox.appendChild(title);
 
-        const gridContainer = document.getElementById(`bingoCard_${cardNum}`);
-        cardNumbersMap[cardNum].forEach((num, index) => {
-            const cell = document.createElement("div");
-            cell.textContent = num;
-            cell.id = `bingo_cell_${cardNum}_${index}`;
-            cell.dataset.value = num;
-            
-            if(num === "FREE"){
-                cell.className = "free mark";
-            } else if(currentDrawnNumbers.includes(num)) {
-                cell.className = "mark";
-            }
-            
-            cell.onclick = () => {
-                if(num !== "FREE") cell.classList.toggle("mark");
-            };
-            gridContainer.appendChild(cell);
+        const header = document.createElement("div");
+        header.className = "bingo-header";
+        ["B","I","N","G","O"].forEach(L => {
+            const d = document.createElement("div");
+            d.textContent = L;
+            header.appendChild(d);
         });
+        cardBox.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "bingo";
+        grid.id = "bingoCard_" + cardNum;
+        nums.forEach((num, index) => {
+            const cell = document.createElement("div");
+            cell.textContent = (num === "FREE" || num === "free") ? "FREE" : String(num);
+            cell.id = "bingo_cell_" + cardNum + "_" + index;
+            cell.dataset.value = num;
+            if (num === "FREE") cell.className = "free mark";
+            else if (currentDrawnNumbers.map(Number).includes(Number(num))) cell.className = "mark";
+            else cell.className = "";
+            cell.onclick = function() {
+                if (num !== "FREE") cell.classList.toggle("mark");
+            };
+            grid.appendChild(cell);
+        });
+        cardBox.appendChild(grid);
+        container.appendChild(cardBox);
     });
+    if (n >= 2) applyCardZoom();
 }
 
 socket.on('init_state', (data) => {
@@ -1592,24 +1617,36 @@ socket.on('game_ended', (data) => {
 });
 
 socket.on('reset_player_card', () => {
+    // ዙር አልቋል — ካርድ ምርጫ ብቻ፣ ሙሉ page refresh አይደለም
     gameInProgress = false;
     currentDrawnNumbers = [];
     lastCallsArray = [];
-    updateLastCallsUI();
-    updateCalledNumbersUI([]);
-    document.getElementById("currentCall").textContent = "—";
-    
+    autoBingoClaimed = false;
+    try { updateLastCallsUI(); } catch(e) {}
+    try { updateCalledNumbersUI([]); } catch(e) {}
+    const cc = document.getElementById("currentCall");
+    if (cc) cc.textContent = "—";
+    const badge = document.getElementById("callCountBadge");
+    if (badge) badge.textContent = "0";
+
     selectedCards = [];
     takenCards = [];
     document.getElementById("winnerBox").classList.add("hide");
     document.getElementById("mainGameSection").classList.add("hide");
-    document.getElementById("cardSelectionSection").classList.remove("hide"); 
-    
+    document.getElementById("cardSelectionSection").classList.remove("hide");
+    const prev = document.getElementById("selectedCardsPreview");
+    if (prev) prev.innerHTML = "";
+    const zoomBar = document.getElementById("cardZoomBar");
+    if (zoomBar) zoomBar.style.display = "none";
+
     buildCardGrid();
     updateCardGridUI();
-    // ተመሳሳይ stake room ላይ ቀጥል
     if (currentStake) {
-        socket.emit('join_room', currentStake);
+        socket.emit('join_room', {
+            stake: currentStake,
+            telegram_id: player ? player.telegram_id : null,
+            playerName: player ? player.name : 'ተጫዋች'
+        });
     }
 });
 

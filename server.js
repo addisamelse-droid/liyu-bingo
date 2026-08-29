@@ -526,21 +526,31 @@ function countRealPlayers(room) {
     ).length;
 }
 
-function fillBotCards(room, stakeNum) {
-    // አስቀድሞ ያሉ bots አጽዳ
-    Object.keys(room.players).forEach(id => {
+function fillBotCards(room, stakeNum, force) {
+    const realCount = countRealPlayers(room);
+    if (realCount >= 10) {
+        // ቦቶች አስወግድ
+        Object.keys(room.players || {}).forEach(id => {
+            if (room.players[id] && room.players[id].isBot) delete room.players[id];
+        });
+        rebuildTakenCards(room);
+        return [];
+    }
+
+    // አስቀድሞ 5 bot ካለ — አትቀይር (refresh / join ላይ መዝገብት አያስፈልግም)
+    const existingBots = Object.keys(room.players || {}).filter(id => room.players[id] && room.players[id].isBot);
+    if (!force && existingBots.length >= 5) {
+        rebuildTakenCards(room);
+        return existingBots;
+    }
+
+    // አሮጌ bots አጽዳ ከዛ አዲስ ሙላ
+    Object.keys(room.players || {}).forEach(id => {
         if (room.players[id] && room.players[id].isBot) {
             delete room.players[id];
         }
     });
-    let allTaken = [];
-    Object.values(room.players).forEach(p => {
-        allTaken = allTaken.concat(p.cardNums || []);
-    });
-    room.takenCards = allTaken.slice();
-
-    const realCount = countRealPlayers(room);
-    if (realCount >= 10) return; // በቂ እውነተኛ ተጫዋች
+    rebuildTakenCards(room);
 
     const needCards = 5;
     const freeNums = [];
