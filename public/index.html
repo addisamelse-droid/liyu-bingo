@@ -150,7 +150,7 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 
 
 .afro-top-call{display:flex;align-items:center;gap:8px;margin:6px 0 8px;flex-wrap:wrap;}
-.cards-2col{display:grid!important;grid-template-columns:1fr 1fr;gap:6px;max-height:45vh;}
+.cards-2col{display:flex!important;flex-direction:column!important;gap:8px;max-height:55vh;}
 .cards-2col .box{margin:0!important;padding:6px!important;}
 .cards-2col .bingo div{padding:4px 1px;font-size:11px;}
 .cards-2col h4{font-size:11px!important;}
@@ -742,6 +742,21 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
 #bingoCardsContainer.cards-multi .bingo{
   display:grid!important;
   grid-template-columns:repeat(5,1fr)!important;
+}
+
+
+#bingoCardsContainer.cards-stack-v{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:12px!important;
+  width:100%!important;
+  max-height:58vh!important;
+  overflow-y:auto!important;
+}
+#bingoCardsContainer.cards-stack-v > .player-bingo-card{
+  display:block!important;
+  width:100%!important;
+  flex:0 0 auto!important;
 }
 
 </style>
@@ -1338,43 +1353,51 @@ function renderAllBingoCards(){
     const container = document.getElementById("bingoCardsContainer");
     if(!container) return;
     container.innerHTML = "";
-    // ከካርድ ውጪ ቁጥሮች አትተው
     const preview = document.getElementById("selectedCardsPreview");
-    if (preview) preview.innerHTML = "";
+    if (preview) { preview.innerHTML = ""; preview.style.display = "none"; }
     cardNumbersMap = {};
     const cards = (selectedCards || []).map(Number).filter(Boolean).slice(0, 3);
     const n = cards.length;
-    container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi cards-stack");
-    container.style.transform = "none";
+
+    container.className = "cards-scroll-container cards-stack-v";
     if (n >= 2) {
         container.style.display = "flex";
         container.style.flexDirection = "column";
-        container.style.gridTemplateColumns = "none";
+        container.style.flexWrap = "nowrap";
         container.style.gap = "12px";
         container.style.width = "100%";
         container.style.maxHeight = "58vh";
         container.style.overflowY = "auto";
+        container.style.gridTemplateColumns = "none";
     } else {
         container.style.display = "block";
-        container.style.flexDirection = "";
+        container.style.maxHeight = "none";
     }
 
-    cards.forEach(cardNum => {
-        const nums = getServerCardNumbersJS(cardNum).slice(0, 25); // ትክክል 25 ብቻ
+    cards.forEach(function(cardNum){
+        const nums = getServerCardNumbersJS(cardNum).slice(0, 25);
         cardNumbersMap[cardNum] = nums;
 
         const cardBox = document.createElement("div");
-        cardBox.className = "player-bingo-card box";
-        cardBox.style.cssText = "margin:0;padding:8px;overflow:hidden;";
+        cardBox.className = "player-bingo-card";
+        cardBox.style.display = "block";
+        cardBox.style.width = "100%";
+        cardBox.style.flex = "0 0 auto";
+        cardBox.style.margin = "0";
+        cardBox.style.padding = "10px";
+        cardBox.style.background = "#fff";
+        cardBox.style.borderRadius = "14px";
+        cardBox.style.boxShadow = "0 2px 10px rgba(107,27,154,0.18)";
+        cardBox.style.boxSizing = "border-box";
 
-        const title = document.createElement("h4");
-        title.style.cssText = "margin:0 0 4px 0;text-align:center;font-size:13px;color:#4a148c;";
+        const title = document.createElement("div");
+        title.style.cssText = "text-align:center;font-weight:900;font-size:13px;color:#4a148c;margin-bottom:6px;";
         title.textContent = "🎯 ካርድ #" + cardNum;
         cardBox.appendChild(title);
 
         const header = document.createElement("div");
-        header.className = "bingo-header";
-        ["B","I","N","G","O"].forEach(L => {
+        header.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:3px;text-align:center;font-weight:900;font-size:12px;background:#78168b;color:#fff;border-radius:6px 6px 0 0;padding:4px 0;";
+        ["B","I","N","G","O"].forEach(function(L){
             const d = document.createElement("div");
             d.textContent = L;
             header.appendChild(d);
@@ -1382,18 +1405,34 @@ function renderAllBingoCards(){
         cardBox.appendChild(header);
 
         const grid = document.createElement("div");
-        grid.className = "bingo";
         grid.id = "bingoCard_" + cardNum;
-        nums.forEach((num, index) => {
+        grid.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:3px;width:100%;";
+        nums.forEach(function(num, index){
             const cell = document.createElement("div");
-            cell.textContent = (num === "FREE" || num === "free") ? "FREE" : String(num);
             cell.id = "bingo_cell_" + cardNum + "_" + index;
-            cell.dataset.value = num;
-            if (num === "FREE") cell.className = "free mark";
-            else if (currentDrawnNumbers.map(Number).includes(Number(num))) cell.className = "mark";
-            else cell.className = "";
-            cell.onclick = function() {
-                if (num !== "FREE") cell.classList.toggle("mark");
+            cell.dataset.value = String(num);
+            cell.textContent = (num === "FREE" || num === "free") ? "FREE" : String(num);
+            cell.style.cssText = "display:flex;align-items:center;justify-content:center;min-height:30px;padding:5px 2px;font-size:13px;font-weight:900;color:#2d0a3a;background:#efe6f7;border-radius:4px;";
+            if (num === "FREE") {
+                cell.style.background = "#ff9800";
+                cell.style.color = "#fff";
+                cell.className = "free mark";
+            } else if ((currentDrawnNumbers || []).map(Number).includes(Number(num))) {
+                cell.style.background = "#079b20";
+                cell.style.color = "#fff";
+                cell.className = "mark";
+            }
+            cell.onclick = function(){
+                if (num === "FREE") return;
+                if (cell.classList.contains("mark")) {
+                    cell.classList.remove("mark");
+                    cell.style.background = "#efe6f7";
+                    cell.style.color = "#2d0a3a";
+                } else {
+                    cell.classList.add("mark");
+                    cell.style.background = "#079b20";
+                    cell.style.color = "#fff";
+                }
             };
             grid.appendChild(cell);
         });
@@ -1402,6 +1441,7 @@ function renderAllBingoCards(){
     });
 }
 
+socket.on('init_state'
 socket.on('init_state', (data) => {
     document.getElementById("gameId").textContent = data.gameId || "---";
     document.getElementById("playerCount").textContent = data.playerCount || "1";
