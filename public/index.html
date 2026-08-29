@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="am">
 <head>
 <meta charset="UTF-8">
@@ -684,6 +684,30 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,#d9
   min-height:0!important;
 }
 
+
+/* 2 & 3 cards — vertical stack (ከላይ / ከታች) */
+#mainGameSection #bingoCardsContainer.cards-multi{
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
+  gap:10px!important;
+  max-height:55vh!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  width:100%!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi .player-bingo-card,
+#mainGameSection #bingoCardsContainer.cards-multi .box{
+  width:100%!important;
+  flex-shrink:0!important;
+}
+#mainGameSection #bingoCardsContainer.cards-multi .bingo div{
+  font-size:14px!important;
+  min-height:30px!important;
+  font-weight:900!important;
+  color:#2d0a3a!important;
+}
+
 </style>
 </head>
 <body>
@@ -1284,9 +1308,9 @@ function renderAllBingoCards(){
     cardNumbersMap = {};
     const cards = (selectedCards || []).map(Number).filter(Boolean).slice(0, 3);
     const n = cards.length;
-    container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi") + (n >= 3 ? " cards-count-3" : "");
+    container.className = "cards-scroll-container " + (n <= 1 ? "cards-1" : "cards-multi cards-stack");
     container.style.transform = "none";
-    container.style.display = n >= 3 ? "flex" : "";
+    container.style.display = n >= 2 ? "flex" : "";
 
     cards.forEach(cardNum => {
         const nums = getServerCardNumbersJS(cardNum).slice(0, 25); // ትክክል 25 ብቻ
