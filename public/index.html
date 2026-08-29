@@ -1441,7 +1441,6 @@ function renderAllBingoCards(){
     });
 }
 
-socket.on('init_state'
 socket.on('init_state', (data) => {
     document.getElementById("gameId").textContent = data.gameId || "---";
     document.getElementById("playerCount").textContent = data.playerCount || "1";
